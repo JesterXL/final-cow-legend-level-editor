@@ -3,6 +3,7 @@ module Main exposing (main)
 import AStar exposing (findPath, straightLineCost)
 import Animator exposing (color)
 import Array exposing (Array)
+import Base64.Encode as Base64Encode
 import Browser
 import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
 import Canvas exposing (Point, rect, shapes)
@@ -16,6 +17,7 @@ import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
+import Image
 import Json.Decode as Decode
 import Random
 import Set
@@ -32,7 +34,7 @@ type alias Model =
 type DocumentState
     = WaitingOnUser
     | Loading
-    | Ready String
+    | Ready String String
     | Failed String
 
 
@@ -71,6 +73,9 @@ update msg model =
                 stuff =
                     Zip.getEntry "test.json" zip
 
+                jpgInZip =
+                    Zip.getEntry "thumbs-up.jpg" zip
+
                 _ =
                     Debug.log "stuff" stuff
             in
@@ -84,12 +89,32 @@ update msg model =
                             ( model, Cmd.none )
 
                         Result.Ok jsonString ->
-                            ( { model | documentState = Ready jsonString }, Cmd.none )
+                            case jpgInZip of
+                                Nothing ->
+                                    let
+                                        _ =
+                                            Debug.log "No jpg found in zip" ""
+                                    in
+                                    ( model, Cmd.none )
 
+                                Just jpgEntry ->
+                                    case Zip.Entry.toBytes jpgEntry of
+                                        Result.Err jpgEntryBytesError ->
+                                            let
+                                                _ =
+                                                    Debug.log "failed convert jpg entry to bytes" jpgEntryBytesError
+                                            in
+                                            ( model, Cmd.none )
 
+                                        Result.Ok jpgBytes ->
+                                            let
+                                                image =
+                                                    Base64Encode.encode (Base64Encode.bytes jpgBytes)
 
--- ( model, Cmd.none )
--- ( { model | documentState = Ready }, Cmd.none )
+                                                _ =
+                                                    Debug.log "image" image
+                                            in
+                                            ( { model | documentState = Ready jsonString image }, Cmd.none )
 
 
 requestFile : Cmd Msg
@@ -128,15 +153,17 @@ view model =
                         ]
                     ]
                 ]
-            , div [ class "flex flex-row flex-nowrap" ]
-                [ div [ class "basis-6/12" ] [ text "image here" ]
-                , case model.documentState of
-                    Ready jsonString ->
-                        div [ class "text-black p-2 basis-6/12" ] [ text jsonString ]
+            , div
+                [ class "flex flex-row flex-nowrap" ]
+                (case model.documentState of
+                    Ready jsonString imageString ->
+                        [ img [ class "basis-6/12", src ("data:image/jpg;base64," ++ imageString) ] [ text "image here" ]
+                        , div [ class "text-black p-2 basis-6/12" ] [ text jsonString ]
+                        ]
 
                     _ ->
-                        span [ class "basis-6/12" ] []
-                ]
+                        [ span [ class "basis-6/12" ] [] ]
+                )
             ]
         ]
 
