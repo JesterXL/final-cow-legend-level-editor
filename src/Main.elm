@@ -1,4 +1,4 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import AStar exposing (findPath, straightLineCost)
 import Animator exposing (color)
@@ -11,7 +11,7 @@ import Canvas exposing (Point, rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Advanced
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
-import Canvas.Texture exposing (sprite)
+import Canvas.Texture exposing (Texture, sprite)
 import Color
 import File exposing (File)
 import File.Select as Select
@@ -35,7 +35,8 @@ type alias Model =
 type DocumentState
     = WaitingOnUser
     | Loading
-    | Ready JSONString ImageAsString
+    | GotImageSelected JSONString ImageAsString
+    | Ready JSONString ImageAsString Texture
     | Failed String
 
 
@@ -49,7 +50,7 @@ type alias ImageAsString =
 
 initialModel : Model
 initialModel =
-    { documentState = Ready "'{}'" defaultImageString
+    { documentState = WaitingOnUser
     }
 
 
@@ -59,7 +60,9 @@ type Msg
     | GotZip (Maybe Zip)
     | OpenImage
     | ImageLoaded File
-    | ImageBytesLoaded Bytes
+    | ImageBytesLoaded String String
+    | ImageLoadedFromJavaScript Decode.Value
+    | Keyboard KeyPressOrRelease
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -129,13 +132,46 @@ update msg model =
                                                 _ =
                                                     Debug.log "image" image
                                             in
-                                            ( { model | documentState = Ready jsonString image }, Cmd.none )
+                                            ( { model | documentState = GotImageSelected jsonString image }, Cmd.none )
 
         ImageLoaded imageFile ->
             ( model, parseImageFileBytes imageFile )
 
-        ImageBytesLoaded imageBytes ->
-            ( { model | documentState = Ready "'{}'" (Base64Encode.encode (Base64Encode.bytes imageBytes)) }, Cmd.none )
+        ImageBytesLoaded imageName imageBase64 ->
+            ( { model | documentState = GotImageSelected "'{}'" imageBase64 }, loadImageURL imageBase64 )
+
+        ImageLoadedFromJavaScript image ->
+            let
+                _ =
+                    Debug.log "texturefrom dom image" (Canvas.Texture.fromDomImage image)
+            in
+            case Canvas.Texture.fromDomImage image of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just texture ->
+                    let
+                        { width, height } =
+                            Canvas.Texture.dimensions texture
+
+                        sprite =
+                            Canvas.Texture.sprite
+                                { x = 0
+                                , y = 0
+                                , width = width
+                                , height = height
+                                }
+                                texture
+                    in
+                    case model.documentState of
+                        GotImageSelected jsonString imageAsString ->
+                            ( { model | documentState = Ready jsonString imageAsString sprite }, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+        Keyboard keyPressOrRelease ->
+            ( model, Cmd.none )
 
 
 requestFile : Cmd Msg
@@ -150,23 +186,63 @@ requestImage =
 
 parseImageFileBytes : File -> Cmd Msg
 parseImageFileBytes file =
-    Task.perform ImageBytesLoaded (File.toBytes file)
+    Task.perform (ImageBytesLoaded (File.name file)) (File.toUrl file)
+
+
+keyDecoderPressed : Decode.Decoder Msg
+keyDecoderPressed =
+    Decode.map toKeyPressed (Decode.field "key" Decode.string)
+
+
+toKeyPressed : String -> Msg
+toKeyPressed string =
+    -- let
+    --     _ =
+    --         Debug.log "key pressed" string
+    -- in
+    case string of
+        "o" ->
+            Keyboard OPressed
+
+        _ ->
+            Keyboard OtherKeyPressed
+
+
+keyDecoderReleased : Decode.Decoder Msg
+keyDecoderReleased =
+    Decode.map toKeyReleased (Decode.field "key" Decode.string)
+
+
+toKeyReleased : String -> Msg
+toKeyReleased string =
+    -- let
+    --     _ =
+    --         Debug.log "key released" string
+    -- in
+    case string of
+        "o" ->
+            Keyboard OReleased
+
+        _ ->
+            Keyboard OtherKeyReleased
+
+
+type KeyPressOrRelease
+    = OPressed
+    | OReleased
+    | OtherKeyPressed
+    | OtherKeyReleased
+
+
+port loadImageURL : String -> Cmd msg
+
+
+port onImageFromJavaScript : (Decode.Value -> msg) -> Sub msg
 
 
 view : Model -> Html Msg
 view model =
     div [ class "w-full" ]
-        -- [ Canvas.toHtmlWith
-        --     { width = 300
-        --     , height = 300
-        --     , textures = []
-        --     }
-        --     [ class "block pixel-art" ]
-        --     [ shapes
-        --         [ fill (Color.rgb 0.85 0.92 1) ]
-        --         [ rect ( 0, 0 ) 300 300 ]
-        --     ]
-        -- ]
         [ header [ class "antialiased" ]
             [ nav [ class "bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800" ]
                 [ div [ class "flex flex-wrap justify-between items-center" ]
@@ -188,8 +264,28 @@ view model =
             , div
                 [ class "flex flex-row flex-nowrap" ]
                 (case model.documentState of
-                    Ready jsonString imageString ->
-                        [ div [ class "overflow-hidden" ] [ img [ class "basis-6/12", src ("data:image/jpg;base64," ++ imageString) ] [ text "image here" ] ]
+                    Ready jsonString imageString sprite ->
+                        let
+                            widthAndHeight =
+                                Canvas.Texture.dimensions sprite
+                        in
+                        [ div [ class "overflow-hidden" ]
+                            [ -- img [ class "basis-6/12", src imageString ] [ text "image here" ]
+                              Canvas.toHtmlWith
+                                { width = round widthAndHeight.width
+                                , height = round widthAndHeight.height
+                                , textures = []
+                                }
+                                [ class "block pixel-art" ]
+                                [ shapes
+                                    [ fill (Color.rgb 0.85 0.92 1) ]
+                                    [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
+                                , Canvas.texture
+                                    [ Canvas.Settings.Advanced.imageSmoothing False ]
+                                    ( 0, 0 )
+                                    sprite
+                                ]
+                            ]
                         , div [ class "text-black p-2 basis-2/12" ] [ text jsonString ]
                         ]
 
@@ -207,11 +303,11 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    -- Sub.batch
-    --     [ onKeyDown keyDecoderPressed
-    --     , onKeyUp keyDecoderReleased
-    --     ]
-    Sub.none
+    Sub.batch
+        [ onImageFromJavaScript ImageLoadedFromJavaScript
+        , onKeyDown keyDecoderPressed
+        , onKeyUp keyDecoderReleased
+        ]
 
 
 main : Program () Model Msg
