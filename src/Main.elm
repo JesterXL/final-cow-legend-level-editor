@@ -6,6 +6,7 @@ import Array exposing (Array)
 import Base64.Encode as Base64Encode
 import Browser
 import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
+import Bytes exposing (Bytes)
 import Canvas exposing (Point, rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Advanced
@@ -48,6 +49,9 @@ type Msg
     = OpenFile
     | FileLoaded File
     | GotZip (Maybe Zip)
+    | OpenImage
+    | ImageLoaded File
+    | ImageBytesLoaded Bytes
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -55,6 +59,9 @@ update msg model =
     case msg of
         OpenFile ->
             ( model, requestFile )
+
+        OpenImage ->
+            ( model, requestImage )
 
         FileLoaded file ->
             let
@@ -116,10 +123,26 @@ update msg model =
                                             in
                                             ( { model | documentState = Ready jsonString image }, Cmd.none )
 
+        ImageLoaded imageFile ->
+            ( model, parseImageFileBytes imageFile )
+
+        ImageBytesLoaded imageBytes ->
+            ( { model | documentState = Ready "'{}'" (Base64Encode.encode (Base64Encode.bytes imageBytes)) }, Cmd.none )
+
 
 requestFile : Cmd Msg
 requestFile =
     Select.file [ "application/zip" ] FileLoaded
+
+
+requestImage : Cmd Msg
+requestImage =
+    Select.file [ "image/jpeg", "image/png" ] ImageLoaded
+
+
+parseImageFileBytes : File -> Cmd Msg
+parseImageFileBytes file =
+    Task.perform ImageBytesLoaded (File.toBytes file)
 
 
 view : Model -> Html Msg
@@ -149,7 +172,8 @@ view model =
                             ]
                         ]
                     , div [ class "flex items-center lg:order-2" ]
-                        [ button [ class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenFile ] [ text "Open File" ]
+                        [ button [ class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenImage ] [ text "Open Image" ]
+                        , button [ class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenFile ] [ text "Open File" ]
                         ]
                     ]
                 ]
@@ -157,12 +181,12 @@ view model =
                 [ class "flex flex-row flex-nowrap" ]
                 (case model.documentState of
                     Ready jsonString imageString ->
-                        [ img [ class "basis-6/12", src ("data:image/jpg;base64," ++ imageString) ] [ text "image here" ]
-                        , div [ class "text-black p-2 basis-6/12" ] [ text jsonString ]
+                        [ div [ class "overflow-hidden" ] [ img [ class "basis-6/12", src ("data:image/jpg;base64," ++ imageString) ] [ text "image here" ] ]
+                        , div [ class "text-black p-2 basis-2/12" ] [ text jsonString ]
                         ]
 
                     _ ->
-                        [ span [ class "basis-6/12" ] [] ]
+                        [ span [ class "basis-10/12" ] [] ]
                 )
             ]
         ]
