@@ -43,6 +43,7 @@ type DocumentState
         , sprite : Texture
         , imageOffsetX : Float
         , imageOffsetY : Float
+        , tiles : World
         }
     | Failed String
 
@@ -53,6 +54,29 @@ type alias JSONString =
 
 type alias ImageAsString =
     String
+
+
+type alias World =
+    Array (Array TileType)
+
+
+defaultWorld : World
+defaultWorld =
+    -- Array.repeat 32 (Array.repeat 35 NotWalkable)
+    Array.repeat 8 (Array.repeat 8 NotWalkable)
+
+
+type Row
+    = Row Int
+
+
+type Col
+    = Col Int
+
+
+type TileType
+    = Walkable
+    | NotWalkable
 
 
 initialModel : Model
@@ -71,6 +95,7 @@ type Msg
     | ImageLoadedFromJavaScript Decode.Value
     | Keyboard KeyPressOrRelease
     | ImageOffsetXChange String
+    | ImageOffsetYChange String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -181,6 +206,7 @@ update msg model =
                                         , sprite = sprite
                                         , imageOffsetX = 0
                                         , imageOffsetY = 0
+                                        , tiles = defaultWorld
                                         }
                               }
                             , Cmd.none
@@ -201,6 +227,19 @@ update msg model =
 
                         Just imageOffsetX ->
                             ( { model | documentState = Ready { imageState | imageOffsetX = imageOffsetX } }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        ImageOffsetYChange imageOffsetYString ->
+            case model.documentState of
+                Ready imageState ->
+                    case String.toFloat imageOffsetYString of
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                        Just imageOffsetY ->
+                            ( { model | documentState = Ready { imageState | imageOffsetY = imageOffsetY } }, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -294,7 +333,7 @@ view model =
                     ]
                 ]
             , case model.documentState of
-                Ready { jsonString, base64Image, sprite, imageOffsetX, imageOffsetY } ->
+                Ready { jsonString, base64Image, sprite, imageOffsetX, imageOffsetY, tiles } ->
                     let
                         widthAndHeight =
                             Canvas.Texture.dimensions sprite
@@ -308,14 +347,16 @@ view model =
                                 , textures = []
                                 }
                                 [ class "block pixel-art" ]
-                                [ shapes
+                                ([ shapes
                                     [ fill (Color.rgb 0.85 0.92 1) ]
                                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
-                                , Canvas.texture
+                                 , Canvas.texture
                                     [ Canvas.Settings.Advanced.imageSmoothing False ]
                                     ( 0, 0 )
                                     sprite
-                                ]
+                                 ]
+                                    ++ drawWorld tiles imageOffsetX imageOffsetY
+                                )
                             ]
                         , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
                             [ h5 [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ] [ text "Properties" ]
@@ -325,8 +366,7 @@ view model =
                                     [ div []
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset X:" ]
                                         , input
-                                            [ Html.Attributes.type_ "text"
-                                            , class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetXChange
                                             , value (String.fromFloat imageOffsetX)
                                             ]
@@ -336,6 +376,7 @@ view model =
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset Y:" ]
                                         , input
                                             [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            , onInput ImageOffsetYChange
                                             , value (String.fromFloat imageOffsetY)
                                             ]
                                             []
@@ -353,39 +394,48 @@ view model =
 
                 _ ->
                     div [] []
-
-            -- [ class "flex flex-row flex-nowrap" ]
-            -- (case model.documentState of
-            --     Ready jsonString imageString sprite ->
-            --         let
-            --             widthAndHeight =
-            --                 Canvas.Texture.dimensions sprite
-            --         in
-            --         [ div [ class "overflow-hidden" ]
-            --             [ img [ class "basis-6/12", src imageString ]
-            --                 [ text "image here" ]
-            --             , Canvas.toHtmlWith
-            --                 { width = round widthAndHeight.width
-            --                 , height = round widthAndHeight.height
-            --                 , textures = []
-            --                 }
-            --                 [ class "block pixel-art" ]
-            --                 [ shapes
-            --                     [ fill (Color.rgb 0.85 0.92 1) ]
-            --                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
-            --                 , Canvas.texture
-            --                     [ Canvas.Settings.Advanced.imageSmoothing False ]
-            --                     ( 0, 0 )
-            --                     sprite
-            --                 ]
-            --             ]
-            --         ]
-            --     -- , div [ class "text-black p-2 basis-2/12" ] [ text jsonString ]
-            --     _ ->
-            --         []
-            -- )
             ]
         ]
+
+
+drawWorld : World -> Float -> Float -> List Canvas.Renderable
+drawWorld world imageOffsetX imageOffsetY =
+    [ Canvas.group
+        [ Canvas.Settings.Advanced.alpha 0.5
+        , Canvas.Settings.Advanced.transform
+            [ Canvas.Settings.Advanced.translate imageOffsetX imageOffsetY ]
+        ]
+        (Array.indexedMap
+            (\rowIndex row ->
+                Array.indexedMap
+                    (\colIndex cell ->
+                        drawCell (Row rowIndex) (Col colIndex) cell
+                    )
+                    row
+                    |> Array.toList
+                    |> List.concatMap
+                        (\cell -> cell)
+            )
+            world
+            |> Array.toList
+            |> List.concatMap
+                (\cell -> cell)
+        )
+    ]
+
+
+drawCell : Row -> Col -> TileType -> List Canvas.Renderable
+drawCell (Row row) (Col col) tileType =
+    [ shapes
+        [ if tileType == Walkable then
+            fill Color.green
+
+          else
+            fill Color.red
+        ]
+        [ rect ( Basics.toFloat col * 16, Basics.toFloat row * 16 ) 16 16 ]
+    , shapes [ stroke Color.lightGreen ] [ rect ( Basics.toFloat col * 16, Basics.toFloat row * 16 ) 16 16 ]
+    ]
 
 
 init : () -> ( Model, Cmd Msg )
