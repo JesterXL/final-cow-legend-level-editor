@@ -17,11 +17,12 @@ import File exposing (File)
 import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick)
+import Html.Events exposing (onClick, onInput)
 import Image
 import Json.Decode as Decode
 import Random
 import Set
+import String exposing (toFloat)
 import Task
 import Zip exposing (Zip)
 import Zip.Entry
@@ -36,7 +37,13 @@ type DocumentState
     = WaitingOnUser
     | Loading
     | GotImageSelected JSONString ImageAsString
-    | Ready JSONString ImageAsString Texture
+    | Ready
+        { jsonString : JSONString
+        , base64Image : ImageAsString
+        , sprite : Texture
+        , imageOffsetX : Float
+        , imageOffsetY : Float
+        }
     | Failed String
 
 
@@ -63,6 +70,7 @@ type Msg
     | ImageBytesLoaded String String
     | ImageLoadedFromJavaScript Decode.Value
     | Keyboard KeyPressOrRelease
+    | ImageOffsetXChange String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -165,13 +173,37 @@ update msg model =
                     in
                     case model.documentState of
                         GotImageSelected jsonString imageAsString ->
-                            ( { model | documentState = Ready jsonString imageAsString sprite }, Cmd.none )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { jsonString = jsonString
+                                        , base64Image = imageAsString
+                                        , sprite = sprite
+                                        , imageOffsetX = 0
+                                        , imageOffsetY = 0
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         _ ->
                             ( model, Cmd.none )
 
         Keyboard keyPressOrRelease ->
             ( model, Cmd.none )
+
+        ImageOffsetXChange imageOffsetXString ->
+            case model.documentState of
+                Ready imageState ->
+                    case String.toFloat imageOffsetXString of
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                        Just imageOffsetX ->
+                            ( { model | documentState = Ready { imageState | imageOffsetX = imageOffsetX } }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
 requestFile : Cmd Msg
@@ -261,37 +293,81 @@ view model =
                         ]
                     ]
                 ]
-            , div
-                [ class "flex flex-row flex-nowrap" ]
-                (case model.documentState of
-                    Ready jsonString imageString sprite ->
-                        let
-                            widthAndHeight =
-                                Canvas.Texture.dimensions sprite
-                        in
-                        [ div [ class "overflow-hidden" ]
-                            [ -- img [ class "basis-6/12", src imageString ] [ text "image here" ]
-                              Canvas.toHtmlWith
-                                { width = round widthAndHeight.width
-                                , height = round widthAndHeight.height
-                                , textures = []
-                                }
-                                [ class "block pixel-art" ]
-                                [ shapes
-                                    [ fill (Color.rgb 0.85 0.92 1) ]
-                                    [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
-                                , Canvas.texture
-                                    [ Canvas.Settings.Advanced.imageSmoothing False ]
-                                    ( 0, 0 )
-                                    sprite
+            , case model.documentState of
+                Ready { jsonString, base64Image, sprite, imageOffsetX, imageOffsetY } ->
+                    let
+                        _ =
+                            Debug.log "imageOffsetX" imageOffsetX
+
+                        _ =
+                            Debug.log "flaot" (String.fromFloat imageOffsetX)
+                    in
+                    div
+                        [ class "flex flex-row flex-nowrap" ]
+                        [ div [ class "grow" ] []
+                        , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
+                            [ h5 [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ] [ text "Properties" ]
+                            , button [ class "text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 absolute top-2.5 right-2.5 inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" ] [ text "Close" ]
+                            , Html.form [ class "text-white" ]
+                                [ div [ class "space-y-4" ]
+                                    [ div []
+                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset X:" ]
+                                        , input
+                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                                            , onInput ImageOffsetXChange
+                                            ]
+                                            [ text (String.fromFloat imageOffsetX) ]
+                                        ]
+                                    , div []
+                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset Y:" ]
+                                        , input
+                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" ]
+                                            [ text (String.fromFloat imageOffsetY) ]
+                                        ]
+                                    , div []
+                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Map JSON:" ]
+                                        , textarea
+                                            [ rows 4, class "block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" ]
+                                            [ text jsonString ]
+                                        ]
+                                    ]
                                 ]
                             ]
-                        , div [ class "text-black p-2 basis-2/12" ] [ text jsonString ]
                         ]
 
-                    _ ->
-                        [ span [ class "basis-10/12" ] [] ]
-                )
+                _ ->
+                    div [] []
+
+            -- [ class "flex flex-row flex-nowrap" ]
+            -- (case model.documentState of
+            --     Ready jsonString imageString sprite ->
+            --         let
+            --             widthAndHeight =
+            --                 Canvas.Texture.dimensions sprite
+            --         in
+            --         [ div [ class "overflow-hidden" ]
+            --             [ img [ class "basis-6/12", src imageString ]
+            --                 [ text "image here" ]
+            --             , Canvas.toHtmlWith
+            --                 { width = round widthAndHeight.width
+            --                 , height = round widthAndHeight.height
+            --                 , textures = []
+            --                 }
+            --                 [ class "block pixel-art" ]
+            --                 [ shapes
+            --                     [ fill (Color.rgb 0.85 0.92 1) ]
+            --                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
+            --                 , Canvas.texture
+            --                     [ Canvas.Settings.Advanced.imageSmoothing False ]
+            --                     ( 0, 0 )
+            --                     sprite
+            --                 ]
+            --             ]
+            --         ]
+            --     -- , div [ class "text-black p-2 basis-2/12" ] [ text jsonString ]
+            --     _ ->
+            --         []
+            -- )
             ]
         ]
 
