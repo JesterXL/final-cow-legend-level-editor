@@ -296,15 +296,27 @@ view model =
             , case model.documentState of
                 Ready { jsonString, base64Image, sprite, imageOffsetX, imageOffsetY } ->
                     let
-                        _ =
-                            Debug.log "imageOffsetX" imageOffsetX
-
-                        _ =
-                            Debug.log "flaot" (String.fromFloat imageOffsetX)
+                        widthAndHeight =
+                            Canvas.Texture.dimensions sprite
                     in
                     div
                         [ class "flex flex-row flex-nowrap" ]
-                        [ div [ class "grow" ] []
+                        [ div [ class "grow" ]
+                            [ Canvas.toHtmlWith
+                                { width = round widthAndHeight.width
+                                , height = round widthAndHeight.height
+                                , textures = []
+                                }
+                                [ class "block pixel-art" ]
+                                [ shapes
+                                    [ fill (Color.rgb 0.85 0.92 1) ]
+                                    [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
+                                , Canvas.texture
+                                    [ Canvas.Settings.Advanced.imageSmoothing False ]
+                                    ( 0, 0 )
+                                    sprite
+                                ]
+                            ]
                         , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
                             [ h5 [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ] [ text "Properties" ]
                             , button [ class "text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 absolute top-2.5 right-2.5 inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" ] [ text "Close" ]
@@ -313,16 +325,20 @@ view model =
                                     [ div []
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset X:" ]
                                         , input
-                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500"
+                                            [ Html.Attributes.type_ "text"
+                                            , class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetXChange
+                                            , value (String.fromFloat imageOffsetX)
                                             ]
-                                            [ text (String.fromFloat imageOffsetX) ]
+                                            []
                                         ]
                                     , div []
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset Y:" ]
                                         , input
-                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-primary-600 focus:border-primary-600 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" ]
-                                            [ text (String.fromFloat imageOffsetY) ]
+                                            [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            , value (String.fromFloat imageOffsetY)
+                                            ]
+                                            []
                                         ]
                                     , div []
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Map JSON:" ]
