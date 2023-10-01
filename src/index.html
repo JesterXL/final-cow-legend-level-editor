@@ -33,9 +33,11 @@
     })
     // you can use ports and stuff here
     app.ports.loadImageURL.subscribe( imageURL =>
-      loadImage(imageURL)
+      console.log("Elm told JavaScript imageURL:", imageURL) ||
+      loadImage(`data:image/jpeg;charset=utf-8;base64,${imageURL}`)
       .then(
         image =>
+          console.log("JavaScript telling Elm image:", image) ||
           app.ports.onImageFromJavaScript.send(image)
       )
       .catch( err => {

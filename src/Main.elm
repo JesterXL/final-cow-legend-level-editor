@@ -7,6 +7,7 @@ import Base64.Encode as Base64Encode
 import Browser
 import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
 import Bytes exposing (Bytes)
+import Bytes.Encode as BytesEncode
 import Canvas exposing (Point, rect, shapes)
 import Canvas.Settings exposing (fill, stroke)
 import Canvas.Settings.Advanced
@@ -14,31 +15,37 @@ import Canvas.Settings.Text exposing (TextAlign(..), align, font)
 import Canvas.Texture exposing (Texture, sprite)
 import Color
 import File exposing (File)
+import File.Download as Download
 import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import Image
 import Json.Decode as Decode
+import Json.Encode as Encode
 import Random
 import Set
 import String exposing (toFloat)
 import Task
+import Time
 import Zip exposing (Zip)
 import Zip.Entry
 
 
 type alias Model =
     { documentState : DocumentState
+    , zone : Time.Zone
+    , time : Time.Posix
     }
 
 
 type DocumentState
     = WaitingOnUser
     | Loading
-    | GotImageSelected JSONString ImageAsString
+    | GotImageSelected JSONString ImageAsString Bytes
     | Ready
         { jsonString : JSONString
+        , imageBytes : Bytes
         , base64Image : ImageAsString
         , sprite : Texture
         , imageOffsetX : Float
@@ -86,7 +93,17 @@ type TileType
 initialModel : Model
 initialModel =
     { documentState = WaitingOnUser
+    , zone = Time.utc
+    , time = Time.millisToPosix 0
     }
+
+
+type alias ImageName =
+    String
+
+
+type alias ImageBase64 =
+    String
 
 
 type Msg
@@ -95,12 +112,16 @@ type Msg
     | GotZip (Maybe Zip)
     | OpenImage
     | ImageLoaded File
-    | ImageBytesLoaded String String
+    | ImageBytesLoaded ImageName ImageBase64 Bytes
+    | ImageBytesLoadedFailed
     | ImageLoadedFromJavaScript Decode.Value
     | Keyboard KeyPressOrRelease
     | ImageOffsetXChange String
     | ImageOffsetYChange String
     | CanvasScaleChange String
+    | Tick Time.Posix
+    | AdjustTimeZone Time.Zone
+    | SaveLevel { jsonString : JSONString, imageBytes : Bytes, imageOffsetX : Float, imageOffsetY : Float, canvasScale : Float }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -124,59 +145,107 @@ update msg model =
 
         GotZip (Just zip) ->
             let
-                -- stuff =
+                isFile =
+                    \entry -> not (Zip.Entry.isDirectory entry)
+
+                isMapJPG =
+                    \entry -> Zip.Entry.basename entry == "map.jpg"
+
+                isMapPNG =
+                    \entry -> Zip.Entry.basename entry == "map.png"
+
+                isMapJSON =
+                    \entry -> Zip.Entry.basename entry == "map.json"
+
+                -- allDemEntries =
                 --     Zip.entries zip
-                stuff =
-                    Zip.getEntry "test.json" zip
+                --         |> List.filter isFile
+                --         |> List.map (\entry -> Zip.Entry.basename entry)
+                -- _ =
+                --     Debug.log "allDemEntries" allDemEntries
+                mapJSONMaybe =
+                    Zip.entries zip
+                        |> List.filter isMapJSON
+                        |> List.head
 
-                jpgInZip =
-                    Zip.getEntry "thumbs-up.jpg" zip
-
-                _ =
-                    Debug.log "stuff" stuff
+                mapJPGMaybe =
+                    Zip.entries zip
+                        |> List.filter isMapJPG
+                        |> List.head
             in
-            case stuff of
+            case mapJSONMaybe of
                 Nothing ->
                     ( model, Cmd.none )
 
-                Just entry ->
-                    case Zip.Entry.toString entry of
-                        Result.Err err ->
+                Just mapJSON ->
+                    case mapJPGMaybe of
+                        Nothing ->
                             ( model, Cmd.none )
 
-                        Result.Ok jsonString ->
-                            case jpgInZip of
-                                Nothing ->
+                        Just mapJPG ->
+                            case Zip.Entry.toString mapJSON of
+                                Result.Err mapJSONErr ->
                                     let
                                         _ =
-                                            Debug.log "No jpg found in zip" ""
+                                            Debug.log "failed convert mapJSON entry to string" mapJSONErr
                                     in
                                     ( model, Cmd.none )
 
-                                Just jpgEntry ->
-                                    case Zip.Entry.toBytes jpgEntry of
-                                        Result.Err jpgEntryBytesError ->
+                                Result.Ok jsonString ->
+                                    case Zip.Entry.toBytes mapJPG of
+                                        Result.Err mapJPGErr ->
                                             let
                                                 _ =
-                                                    Debug.log "failed convert jpg entry to bytes" jpgEntryBytesError
+                                                    Debug.log "failed convert jpg entry to bytes" mapJPGErr
                                             in
                                             ( model, Cmd.none )
 
                                         Result.Ok jpgBytes ->
                                             let
-                                                image =
+                                                imageBase64 =
                                                     Base64Encode.encode (Base64Encode.bytes jpgBytes)
-
-                                                _ =
-                                                    Debug.log "image" image
                                             in
-                                            ( { model | documentState = GotImageSelected jsonString image }, Cmd.none )
+                                            ( { model | documentState = GotImageSelected jsonString imageBase64 jpgBytes }, loadImageURL imageBase64 )
 
+        -- case allImages of
+        --     Nothing ->
+        --         ( model, Cmd.none )
+        --     Just entry ->
+        --         case Zip.Entry.toString entry of
+        --             Result.Err err ->
+        --                 ( model, Cmd.none )
+        --             Result.Ok jsonString ->
+        --                 case jpgInZip of
+        --                     Nothing ->
+        --                         let
+        --                             _ =
+        --                                 Debug.log "No jpg found in zip" ""
+        --                         in
+        --                         ( model, Cmd.none )
+        --                     Just jpgEntry ->
+        --                         case Zip.Entry.toBytes jpgEntry of
+        --                             Result.Err jpgEntryBytesError ->
+        --                                 let
+        --                                     _ =
+        --                                         Debug.log "failed convert jpg entry to bytes" jpgEntryBytesError
+        --                                 in
+        --                                 ( model, Cmd.none )
+        --                             Result.Ok jpgBytes ->
+        --                                 let
+        --                                     image =
+        --                                         Base64Encode.encode (Base64Encode.bytes jpgBytes)
+        --                                     _ =
+        --                                         Debug.log "image" image
+        --                                 in
+        --                                 ( { model | documentState = GotImageSelected jsonString image jpgBytes }, Cmd.none )
         ImageLoaded imageFile ->
             ( model, parseImageFileBytes imageFile )
 
-        ImageBytesLoaded imageName imageBase64 ->
-            ( { model | documentState = GotImageSelected "'{}'" imageBase64 }, loadImageURL imageBase64 )
+        ImageBytesLoaded imageName imageBase64 imageBytes ->
+            ( { model | documentState = GotImageSelected "'{}'" imageBase64 imageBytes }, loadImageURL imageBase64 )
+
+        ImageBytesLoadedFailed ->
+            ( model, Cmd.none )
 
         ImageLoadedFromJavaScript image ->
             let
@@ -202,11 +271,12 @@ update msg model =
                                 texture
                     in
                     case model.documentState of
-                        GotImageSelected jsonString imageAsString ->
+                        GotImageSelected jsonString imageAsString imageBytes ->
                             ( { model
                                 | documentState =
                                     Ready
                                         { jsonString = jsonString
+                                        , imageBytes = imageBytes
                                         , base64Image = imageAsString
                                         , sprite = sprite
                                         , imageOffsetX = 0
@@ -263,6 +333,38 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        Tick newTime ->
+            ( { model | time = newTime }, Cmd.none )
+
+        AdjustTimeZone newZone ->
+            ( { model | zone = newZone }, Cmd.none )
+
+        SaveLevel { jsonString, imageBytes, imageOffsetX, imageOffsetY, canvasScale } ->
+            let
+                encodedJSON =
+                    Encode.encode 4 (jsonEncoder imageOffsetX imageOffsetY canvasScale)
+                        |> BytesEncode.string
+                        |> BytesEncode.encode
+                        |> Zip.Entry.store
+                            { path = "map.json"
+                            , lastModified = ( model.zone, model.time )
+                            , comment = Nothing
+                            }
+
+                encodedJPG =
+                    Zip.Entry.store
+                        { path = "map.jpg"
+                        , lastModified = ( model.zone, model.time )
+                        , comment = Nothing
+                        }
+                        imageBytes
+
+                newZipBytes =
+                    Zip.fromEntries [ encodedJSON, encodedJPG ]
+                        |> Zip.toBytes
+            in
+            ( model, Download.bytes "dat.zip" "application/zip" newZipBytes )
+
 
 requestFile : Cmd Msg
 requestFile =
@@ -276,7 +378,44 @@ requestImage =
 
 parseImageFileBytes : File -> Cmd Msg
 parseImageFileBytes file =
-    Task.perform (ImageBytesLoaded (File.name file)) (File.toUrl file)
+    Task.sequence
+        [ File.toUrl file
+            |> Task.andThen (\url -> Task.succeed (getFileInfo (Just url) Nothing))
+        , File.toBytes file
+            |> Task.andThen (\bytes -> Task.succeed (getFileInfo Nothing (Just bytes)))
+        ]
+        |> Task.perform
+            (\taskResult ->
+                case taskResult of
+                    [ urlFileInfo, bytesFileInfo ] ->
+                        case urlFileInfo.url of
+                            Nothing ->
+                                ImageBytesLoadedFailed
+
+                            Just url ->
+                                case bytesFileInfo.bytes of
+                                    Nothing ->
+                                        ImageBytesLoadedFailed
+
+                                    Just bytes ->
+                                        ImageBytesLoaded (File.name file) url bytes
+
+                    _ ->
+                        ImageBytesLoadedFailed
+            )
+
+
+type alias FileInfo =
+    { url : Maybe String
+    , bytes : Maybe Bytes
+    }
+
+
+getFileInfo : Maybe String -> Maybe Bytes -> FileInfo
+getFileInfo url bytes =
+    { url = url
+    , bytes = bytes
+    }
 
 
 keyDecoderPressed : Decode.Decoder Msg
@@ -324,6 +463,15 @@ type KeyPressOrRelease
     | OtherKeyReleased
 
 
+jsonEncoder : Float -> Float -> Float -> Encode.Value
+jsonEncoder imageOffsetX imageOffsetY canvasScale =
+    Encode.object
+        [ ( "imageOffsetX", Encode.float imageOffsetX )
+        , ( "imageOffsetY", Encode.float imageOffsetY )
+        , ( "canvasScale", Encode.float canvasScale )
+        ]
+
+
 port loadImageURL : String -> Cmd msg
 
 
@@ -352,7 +500,7 @@ view model =
                     ]
                 ]
             , case model.documentState of
-                Ready { jsonString, base64Image, sprite, imageOffsetX, imageOffsetY, tiles, canvasScale } ->
+                Ready { jsonString, imageBytes, base64Image, sprite, imageOffsetX, imageOffsetY, tiles, canvasScale } ->
                     let
                         widthAndHeight =
                             Canvas.Texture.dimensions sprite
@@ -429,6 +577,7 @@ view model =
                                             [ rows 4, class "block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" ]
                                             [ text jsonString ]
                                         ]
+                                    , button [ onClick (SaveLevel { jsonString = jsonString, imageBytes = imageBytes, imageOffsetX = imageOffsetX, imageOffsetY = imageOffsetY, canvasScale = canvasScale }) ] [ text "Save" ]
                                     ]
                                 ]
                             ]
@@ -492,6 +641,7 @@ subscriptions model =
         [ onImageFromJavaScript ImageLoadedFromJavaScript
         , onKeyDown keyDecoderPressed
         , onKeyUp keyDecoderReleased
+        , Time.every (10 * 1000) Tick
         ]
 
 
