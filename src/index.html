@@ -34,7 +34,7 @@
     // you can use ports and stuff here
     app.ports.loadImageURL.subscribe( imageURL =>
       console.log("Elm told JavaScript imageURL:", imageURL) ||
-      loadImage(`data:image/jpeg;charset=utf-8;base64,${imageURL}`)
+      loadImage(getImageURLPrefixMaybe(imageURL))
       .then(
         image =>
           console.log("JavaScript telling Elm image:", image) ||
@@ -44,6 +44,20 @@
         console.log("image load failed:", err)
       })
     )
+
+    app.ports.getCanvasBoundingRect.subscribe( () => {
+      app.ports.onCanvasBoundingRect.send(
+        document.getElementsByTagName('elm-canvas')[0].getBoundingClientRect()
+      )
+    })
+
+    const getImageURLPrefixMaybe = url => {
+      if(url.indexOf('data:image/png') < 0) {
+        return `data:image/png;charset=utf-8;base64,${url}`
+      } else {
+        return url
+      }
+    }
 
   </script>
 </body>

@@ -19,7 +19,7 @@ import File.Download as Download
 import File.Select as Select
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (on, onClick, onInput)
 import Image
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -28,6 +28,8 @@ import Set
 import String exposing (toFloat)
 import Task
 import Time
+import Vector29
+import Vector31
 import Zip exposing (Zip)
 import Zip.Entry
 
@@ -36,6 +38,7 @@ type alias Model =
     { documentState : DocumentState
     , zone : Time.Zone
     , time : Time.Posix
+    , canvasBoundingRect : CanvasBoundingRect
     }
 
 
@@ -65,24 +68,48 @@ type alias ImageAsString =
 
 
 type alias World =
-    Array (Array TileType)
+    Vector31.Vector31 (Vector29.Vector29 TileType)
 
 
 defaultWorld : World
 defaultWorld =
-    Array.repeat 32 (Array.repeat 35 NotWalkable)
-
-
-
--- Array.repeat 8 (Array.repeat 8 NotWalkable)
+    Vector29.initializeFromInt (\_ -> NotWalkable)
+        |> Vector31.repeat
 
 
 type Row
-    = Row Int
+    = Row Vector31.Index
 
 
 type Col
-    = Col Int
+    = Col Vector29.Index
+
+
+getCell : Row -> Col -> World -> TileType
+getCell (Row row) (Col col) world =
+    let
+        rowVector =
+            Vector31.get row world
+
+        tile =
+            Vector29.get col rowVector
+    in
+    tile
+
+
+setCell : Row -> Col -> TileType -> World -> World
+setCell (Row row) (Col col) newValue world =
+    let
+        rowVector =
+            Vector31.get row world
+
+        updatedColVector =
+            Vector29.set col newValue rowVector
+
+        updatedRowVector =
+            Vector31.set row updatedColVector world
+    in
+    updatedRowVector
 
 
 type TileType
@@ -90,11 +117,22 @@ type TileType
     | NotWalkable
 
 
+getOppositeTileType : TileType -> TileType
+getOppositeTileType tile =
+    case tile of
+        Walkable ->
+            NotWalkable
+
+        NotWalkable ->
+            Walkable
+
+
 initialModel : Model
 initialModel =
     { documentState = WaitingOnUser
     , zone = Time.utc
     , time = Time.millisToPosix 0
+    , canvasBoundingRect = { x = 0, y = 0, width = 0, height = 0 }
     }
 
 
@@ -122,6 +160,8 @@ type Msg
     | Tick Time.Posix
     | AdjustTimeZone Time.Zone
     | SaveLevel { jsonString : JSONString, imageBytes : Bytes, imageOffsetX : Float, imageOffsetY : Float, canvasScale : Float }
+    | MouseClick MouseClickData
+    | CanvasBoundingRectLoaded Decode.Value
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -168,9 +208,13 @@ update msg model =
                         |> List.filter isMapJSON
                         |> List.head
 
-                mapJPGMaybe =
+                -- mapJPGMaybe =
+                --     Zip.entries zip
+                --         |> List.filter isMapJPG
+                --         |> List.head
+                mapPNGMaybe =
                     Zip.entries zip
-                        |> List.filter isMapJPG
+                        |> List.filter isMapPNG
                         |> List.head
             in
             case mapJSONMaybe of
@@ -178,11 +222,11 @@ update msg model =
                     ( model, Cmd.none )
 
                 Just mapJSON ->
-                    case mapJPGMaybe of
+                    case mapPNGMaybe of
                         Nothing ->
                             ( model, Cmd.none )
 
-                        Just mapJPG ->
+                        Just mapPNG ->
                             case Zip.Entry.toString mapJSON of
                                 Result.Err mapJSONErr ->
                                     let
@@ -192,57 +236,26 @@ update msg model =
                                     ( model, Cmd.none )
 
                                 Result.Ok jsonString ->
-                                    case Zip.Entry.toBytes mapJPG of
-                                        Result.Err mapJPGErr ->
+                                    case Zip.Entry.toBytes mapPNG of
+                                        Result.Err mapPNGErr ->
                                             let
                                                 _ =
-                                                    Debug.log "failed convert jpg entry to bytes" mapJPGErr
+                                                    Debug.log "failed convert png entry to bytes" mapPNGErr
                                             in
                                             ( model, Cmd.none )
 
-                                        Result.Ok jpgBytes ->
+                                        Result.Ok pngBytes ->
                                             let
                                                 imageBase64 =
-                                                    Base64Encode.encode (Base64Encode.bytes jpgBytes)
+                                                    Base64Encode.encode (Base64Encode.bytes pngBytes)
                                             in
-                                            ( { model | documentState = GotImageSelected jsonString imageBase64 jpgBytes }, loadImageURL imageBase64 )
+                                            ( { model | documentState = GotImageSelected jsonString imageBase64 pngBytes }, loadImageURL imageBase64 )
 
-        -- case allImages of
-        --     Nothing ->
-        --         ( model, Cmd.none )
-        --     Just entry ->
-        --         case Zip.Entry.toString entry of
-        --             Result.Err err ->
-        --                 ( model, Cmd.none )
-        --             Result.Ok jsonString ->
-        --                 case jpgInZip of
-        --                     Nothing ->
-        --                         let
-        --                             _ =
-        --                                 Debug.log "No jpg found in zip" ""
-        --                         in
-        --                         ( model, Cmd.none )
-        --                     Just jpgEntry ->
-        --                         case Zip.Entry.toBytes jpgEntry of
-        --                             Result.Err jpgEntryBytesError ->
-        --                                 let
-        --                                     _ =
-        --                                         Debug.log "failed convert jpg entry to bytes" jpgEntryBytesError
-        --                                 in
-        --                                 ( model, Cmd.none )
-        --                             Result.Ok jpgBytes ->
-        --                                 let
-        --                                     image =
-        --                                         Base64Encode.encode (Base64Encode.bytes jpgBytes)
-        --                                     _ =
-        --                                         Debug.log "image" image
-        --                                 in
-        --                                 ( { model | documentState = GotImageSelected jsonString image jpgBytes }, Cmd.none )
         ImageLoaded imageFile ->
             ( model, parseImageFileBytes imageFile )
 
         ImageBytesLoaded imageName imageBase64 imageBytes ->
-            ( { model | documentState = GotImageSelected "'{}'" imageBase64 imageBytes }, loadImageURL imageBase64 )
+            ( { model | documentState = GotImageSelected "{}" imageBase64 imageBytes }, loadImageURL imageBase64 )
 
         ImageBytesLoadedFailed ->
             ( model, Cmd.none )
@@ -272,6 +285,26 @@ update msg model =
                     in
                     case model.documentState of
                         GotImageSelected jsonString imageAsString imageBytes ->
+                            let
+                                jsonDoc =
+                                    case Decode.decodeString jsonDecoder jsonString of
+                                        Result.Err err ->
+                                            let
+                                                _ =
+                                                    Debug.log "failed to decode json" err
+                                            in
+                                            { imageOffsetX = 0.0
+                                            , imageOffsetY = 0.0
+                                            , canvasScale = 1.0
+                                            }
+
+                                        Result.Ok parsedJSONDoc ->
+                                            let
+                                                _ =
+                                                    Debug.log "parsed json successfully" parsedJSONDoc
+                                            in
+                                            parsedJSONDoc
+                            in
                             ( { model
                                 | documentState =
                                     Ready
@@ -279,13 +312,13 @@ update msg model =
                                         , imageBytes = imageBytes
                                         , base64Image = imageAsString
                                         , sprite = sprite
-                                        , imageOffsetX = 0
-                                        , imageOffsetY = 0
+                                        , imageOffsetX = jsonDoc.imageOffsetX
+                                        , imageOffsetY = jsonDoc.imageOffsetY
                                         , tiles = defaultWorld
-                                        , canvasScale = 1
+                                        , canvasScale = jsonDoc.canvasScale
                                         }
                               }
-                            , Cmd.none
+                            , getCanvasBoundingRect ()
                             )
 
                         _ ->
@@ -302,7 +335,7 @@ update msg model =
                             ( model, Cmd.none )
 
                         Just imageOffsetX ->
-                            ( { model | documentState = Ready { imageState | imageOffsetX = imageOffsetX } }, Cmd.none )
+                            ( { model | documentState = Ready { imageState | imageOffsetX = imageOffsetX } }, getCanvasBoundingRect () )
 
                 _ ->
                     ( model, Cmd.none )
@@ -315,7 +348,7 @@ update msg model =
                             ( model, Cmd.none )
 
                         Just imageOffsetY ->
-                            ( { model | documentState = Ready { imageState | imageOffsetY = imageOffsetY } }, Cmd.none )
+                            ( { model | documentState = Ready { imageState | imageOffsetY = imageOffsetY } }, getCanvasBoundingRect () )
 
                 _ ->
                     ( model, Cmd.none )
@@ -328,7 +361,7 @@ update msg model =
                             ( model, Cmd.none )
 
                         Just canvasScale ->
-                            ( { model | documentState = Ready { imageState | canvasScale = canvasScale } }, Cmd.none )
+                            ( { model | documentState = Ready { imageState | canvasScale = canvasScale } }, getCanvasBoundingRect () )
 
                 _ ->
                     ( model, Cmd.none )
@@ -351,19 +384,96 @@ update msg model =
                             , comment = Nothing
                             }
 
-                encodedJPG =
+                encodedPNG =
                     Zip.Entry.store
-                        { path = "map.jpg"
+                        { path = "map.png"
                         , lastModified = ( model.zone, model.time )
                         , comment = Nothing
                         }
                         imageBytes
 
                 newZipBytes =
-                    Zip.fromEntries [ encodedJSON, encodedJPG ]
+                    Zip.fromEntries [ encodedJSON, encodedPNG ]
                         |> Zip.toBytes
             in
             ( model, Download.bytes "dat.zip" "application/zip" newZipBytes )
+
+        MouseClick mouseClickData ->
+            case model.documentState of
+                Ready imageState ->
+                    let
+                        x =
+                            mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX * imageState.canvasScale
+
+                        y =
+                            mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY * imageState.canvasScale
+
+                        -- _ =
+                        --     Debug.log "mouseClickData" mouseClickData
+                        -- _ =
+                        --     Debug.log "model.canvasBoundingRect" model.canvasBoundingRect
+                        -- _ =
+                        --     Debug.log "image offset" ( imageState.imageOffsetX, imageState.imageOffsetY )
+                        -- _ =
+                        --     Debug.log "x and y" ( x, y )
+                        rowIndexClick =
+                            round (y / 16)
+
+                        colIndexClick =
+                            round (x / 16)
+
+                        maybeRowAndColIndex =
+                            Vector31.intToIndex rowIndexClick
+                                |> Maybe.andThen
+                                    (\rowIndexValue ->
+                                        Vector29.intToIndex colIndexClick
+                                            |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
+                                    )
+                    in
+                    -- case cellMaybe of
+                    --     Nothing ->
+                    --         ( model, Cmd.none )
+                    --     Just tileWalkableState ->
+                    --         let
+                    --             updatedTiles =
+                    --                 Array.set colIndex (getOppositeTileType tileWalkableState) row)
+                    --         in
+                    --         ( { model | documentState = {} }, Cmd.none )
+                    case maybeRowAndColIndex of
+                        Just ( rowIndex, colIndex ) ->
+                            let
+                                tileType =
+                                    getCell (Row rowIndex) (Col colIndex) imageState.tiles
+
+                                updatedTileType =
+                                    getOppositeTileType tileType
+
+                                updatedWorld =
+                                    setCell (Row rowIndex) (Col colIndex) updatedTileType imageState.tiles
+                            in
+                            ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        CanvasBoundingRectLoaded boundingRectValue ->
+            let
+                boundingRect =
+                    getCanvasBoundingRectElseDefault boundingRectValue
+            in
+            ( { model
+                | canvasBoundingRect =
+                    { x = boundingRect.x
+                    , y = boundingRect.y
+                    , width = boundingRect.width
+                    , height = boundingRect.height
+                    }
+              }
+            , Cmd.none
+            )
 
 
 requestFile : Cmd Msg
@@ -373,7 +483,7 @@ requestFile =
 
 requestImage : Cmd Msg
 requestImage =
-    Select.file [ "image/jpeg", "image/png" ] ImageLoaded
+    Select.file [ "image/png" ] ImageLoaded
 
 
 parseImageFileBytes : File -> Cmd Msg
@@ -472,10 +582,61 @@ jsonEncoder imageOffsetX imageOffsetY canvasScale =
         ]
 
 
+jsonDecoder : Decode.Decoder JSONDecodedDocument
+jsonDecoder =
+    Decode.map3 JSONDecodedDocument
+        (Decode.field "imageOffsetX" Decode.float)
+        (Decode.field "imageOffsetY" Decode.float)
+        (Decode.field "canvasScale" Decode.float)
+
+
+type alias JSONDecodedDocument =
+    { imageOffsetX : Float
+    , imageOffsetY : Float
+    , canvasScale : Float
+    }
+
+
+decodeBoundingRect : Decode.Decoder CanvasBoundingRect
+decodeBoundingRect =
+    Decode.map4 CanvasBoundingRect
+        (Decode.field "x" Decode.float)
+        (Decode.field "y" Decode.float)
+        (Decode.field "width" Decode.float)
+        (Decode.field "height" Decode.float)
+
+
+getCanvasBoundingRectElseDefault : Encode.Value -> CanvasBoundingRect
+getCanvasBoundingRectElseDefault boundingRectValue =
+    Decode.decodeValue
+        decodeBoundingRect
+        boundingRectValue
+        |> Result.withDefault
+            { x = 0
+            , y = 0
+            , width = 0
+            , height = 0
+            }
+
+
 port loadImageURL : String -> Cmd msg
 
 
 port onImageFromJavaScript : (Decode.Value -> msg) -> Sub msg
+
+
+port getCanvasBoundingRect : () -> Cmd msg
+
+
+port onCanvasBoundingRect : (Decode.Value -> msg) -> Sub msg
+
+
+type alias CanvasBoundingRect =
+    { x : Float
+    , y : Float
+    , width : Float
+    , height : Float
+    }
 
 
 view : Model -> Html Msg
@@ -513,7 +674,7 @@ view model =
                                 , height = round widthAndHeight.height
                                 , textures = []
                                 }
-                                [ class "block pixel-art" ]
+                                [ class "block pixel-art", on "click" (Decode.map MouseClick mouseClickDecoder) ]
                                 [ shapes
                                     [ fill (Color.rgb 0.85 0.92 1) ]
                                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
@@ -584,9 +745,31 @@ view model =
                         ]
 
                 _ ->
-                    div [] []
+                    div
+                        [ class "flex flex-row flex-nowrap" ]
+                        [ div [ class "grow" ]
+                            [ Canvas.toHtmlWith
+                                { width = round 600
+                                , height = round 600
+                                , textures = []
+                                }
+                                [ class "block pixel-art" ]
+                                []
+                            ]
+                        ]
             ]
         ]
+
+
+mouseClickDecoder : Decode.Decoder MouseClickData
+mouseClickDecoder =
+    Decode.map2 MouseClickData
+        (Decode.field "x" Decode.float)
+        (Decode.field "y" Decode.float)
+
+
+type alias MouseClickData =
+    { x : Float, y : Float }
 
 
 drawWorld : World -> Float -> Float -> List Canvas.Renderable
@@ -597,19 +780,19 @@ drawWorld world imageOffsetX imageOffsetY =
             [ Canvas.Settings.Advanced.translate imageOffsetX imageOffsetY
             ]
         ]
-        (Array.indexedMap
+        (Vector31.indexedMap
             (\rowIndex row ->
-                Array.indexedMap
+                Vector29.indexedMap
                     (\colIndex cell ->
                         drawCell (Row rowIndex) (Col colIndex) cell
                     )
                     row
-                    |> Array.toList
+                    |> Vector29.toList
                     |> List.concatMap
                         (\cell -> cell)
             )
             world
-            |> Array.toList
+            |> Vector31.toList
             |> List.concatMap
                 (\cell -> cell)
         )
@@ -618,6 +801,13 @@ drawWorld world imageOffsetX imageOffsetY =
 
 drawCell : Row -> Col -> TileType -> List Canvas.Renderable
 drawCell (Row row) (Col col) tileType =
+    let
+        rowInt =
+            Vector31.indexToInt row
+
+        colInt =
+            Vector29.indexToInt col
+    in
     [ shapes
         [ if tileType == Walkable then
             fill Color.green
@@ -625,8 +815,8 @@ drawCell (Row row) (Col col) tileType =
           else
             fill Color.red
         ]
-        [ rect ( Basics.toFloat col * 16, Basics.toFloat row * 16 ) 16 16 ]
-    , shapes [ stroke Color.lightGreen ] [ rect ( Basics.toFloat col * 16, Basics.toFloat row * 16 ) 16 16 ]
+        [ rect ( Basics.toFloat colInt * 16, Basics.toFloat rowInt * 16 ) 16 16 ]
+    , shapes [ stroke Color.lightGreen ] [ rect ( Basics.toFloat colInt * 16, Basics.toFloat rowInt * 16 ) 16 16 ]
     ]
 
 
@@ -642,6 +832,7 @@ subscriptions model =
         , onKeyDown keyDecoderPressed
         , onKeyUp keyDecoderReleased
         , Time.every (10 * 1000) Tick
+        , onCanvasBoundingRect CanvasBoundingRectLoaded
         ]
 
 
