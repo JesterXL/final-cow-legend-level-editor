@@ -28,7 +28,7 @@ import Set
 import String exposing (toFloat)
 import Task
 import Time
-import Vector30
+import Vector29
 import Vector31
 import Zip exposing (Zip)
 import Zip.Entry
@@ -68,17 +68,17 @@ type alias ImageAsString =
 
 
 type alias World =
-    Vector30.Vector30 (Vector31.Vector31 TileType)
+    Vector29.Vector29 (Vector31.Vector31 TileType)
 
 
 defaultWorld : World
 defaultWorld =
     Vector31.initializeFromInt (\_ -> NotWalkable)
-        |> Vector30.repeat
+        |> Vector29.repeat
 
 
 type Row
-    = Row Vector30.Index
+    = Row Vector29.Index
 
 
 type Col
@@ -89,7 +89,7 @@ getCell : Row -> Col -> World -> TileType
 getCell (Row row) (Col col) world =
     let
         rowVector =
-            Vector30.get row world
+            Vector29.get row world
 
         tile =
             Vector31.get col rowVector
@@ -101,13 +101,13 @@ setCell : Row -> Col -> TileType -> World -> World
 setCell (Row row) (Col col) newValue world =
     let
         rowVector =
-            Vector30.get row world
+            Vector29.get row world
 
         updatedColVector =
             Vector31.set col newValue rowVector
 
         updatedRowVector =
-            Vector30.set row updatedColVector world
+            Vector29.set row updatedColVector world
     in
     updatedRowVector
 
@@ -418,7 +418,7 @@ update msg model =
                             round (x / 16)
 
                         maybeRowAndColIndex =
-                            Vector30.intToIndex rowIndexClick
+                            Vector29.intToIndex rowIndexClick
                                 |> Maybe.andThen
                                     (\rowIndexValue ->
                                         Vector31.intToIndex colIndexClick
@@ -642,16 +642,16 @@ rowStringsToListStrings rowStrings =
     Vector31.toList rowStrings
 
 
-worldToList : Vector30.Vector30 (Vector31.Vector31 TileType) -> List (List String)
+worldToList : Vector29.Vector29 (Vector31.Vector31 TileType) -> List (List String)
 worldToList world =
-    Vector30.map rowTilesToRowStrings world
-        |> Vector30.map rowStringsToListStrings
-        |> Vector30.toList
+    Vector29.map rowTilesToRowStrings world
+        |> Vector29.map rowStringsToListStrings
+        |> Vector29.toList
 
 
-listToWorld : List (List String) -> Vector30.Vector30 (Vector31.Vector31 TileType)
+listToWorld : List (List String) -> Vector29.Vector29 (Vector31.Vector31 TileType)
 listToWorld list =
-    case Vector30.fromList list of
+    case Vector29.fromList list of
         Nothing ->
             defaultWorld
 
@@ -660,7 +660,7 @@ listToWorld list =
                 defaultWorld
 
             else
-                Vector30.map
+                Vector29.map
                     (\row ->
                         case Vector31.fromList row of
                             Nothing ->
@@ -846,7 +846,7 @@ drawWorld world imageOffsetX imageOffsetY =
             [ Canvas.Settings.Advanced.translate imageOffsetX imageOffsetY
             ]
         ]
-        (Vector30.indexedMap
+        (Vector29.indexedMap
             (\rowIndex row ->
                 Vector31.indexedMap
                     (\colIndex cell ->
@@ -858,7 +858,7 @@ drawWorld world imageOffsetX imageOffsetY =
                         (\cell -> cell)
             )
             world
-            |> Vector30.toList
+            |> Vector29.toList
             |> List.concatMap
                 (\cell -> cell)
         )
@@ -869,7 +869,7 @@ drawCell : Row -> Col -> TileType -> List Canvas.Renderable
 drawCell (Row row) (Col col) tileType =
     let
         rowInt =
-            Vector30.indexToInt row
+            Vector29.indexToInt row
 
         colInt =
             Vector31.indexToInt col
