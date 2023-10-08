@@ -28,7 +28,7 @@ import Set
 import String exposing (toFloat)
 import Task
 import Time
-import Vector29
+import Vector30
 import Vector31
 import Zip exposing (Zip)
 import Zip.Entry
@@ -68,31 +68,31 @@ type alias ImageAsString =
 
 
 type alias World =
-    Vector31.Vector31 (Vector29.Vector29 TileType)
+    Vector30.Vector30 (Vector31.Vector31 TileType)
 
 
 defaultWorld : World
 defaultWorld =
-    Vector29.initializeFromInt (\_ -> NotWalkable)
-        |> Vector31.repeat
+    Vector31.initializeFromInt (\_ -> NotWalkable)
+        |> Vector30.repeat
 
 
 type Row
-    = Row Vector31.Index
+    = Row Vector30.Index
 
 
 type Col
-    = Col Vector29.Index
+    = Col Vector31.Index
 
 
 getCell : Row -> Col -> World -> TileType
 getCell (Row row) (Col col) world =
     let
         rowVector =
-            Vector31.get row world
+            Vector30.get row world
 
         tile =
-            Vector29.get col rowVector
+            Vector31.get col rowVector
     in
     tile
 
@@ -101,13 +101,13 @@ setCell : Row -> Col -> TileType -> World -> World
 setCell (Row row) (Col col) newValue world =
     let
         rowVector =
-            Vector31.get row world
+            Vector30.get row world
 
         updatedColVector =
-            Vector29.set col newValue rowVector
+            Vector31.set col newValue rowVector
 
         updatedRowVector =
-            Vector31.set row updatedColVector world
+            Vector30.set row updatedColVector world
     in
     updatedRowVector
 
@@ -159,7 +159,14 @@ type Msg
     | CanvasScaleChange String
     | Tick Time.Posix
     | AdjustTimeZone Time.Zone
-    | SaveLevel { jsonString : JSONString, imageBytes : Bytes, imageOffsetX : Float, imageOffsetY : Float, canvasScale : Float }
+    | SaveLevel
+        { jsonString : JSONString
+        , imageBytes : Bytes
+        , imageOffsetX : Float
+        , imageOffsetY : Float
+        , canvasScale : Float
+        , tiles : World
+        }
     | MouseClick MouseClickData
     | CanvasBoundingRectLoaded Decode.Value
 
@@ -372,10 +379,13 @@ update msg model =
         AdjustTimeZone newZone ->
             ( { model | zone = newZone }, Cmd.none )
 
-        SaveLevel { jsonString, imageBytes, imageOffsetX, imageOffsetY, canvasScale } ->
+        SaveLevel { jsonString, imageBytes, imageOffsetX, imageOffsetY, canvasScale, tiles } ->
             let
+                encodedTiles =
+                    encodeWorld tiles
+
                 encodedJSON =
-                    Encode.encode 4 (jsonEncoder imageOffsetX imageOffsetY canvasScale)
+                    Encode.encode 4 (jsonEncoder imageOffsetX imageOffsetY canvasScale encodedTiles)
                         |> BytesEncode.string
                         |> BytesEncode.encode
                         |> Zip.Entry.store
@@ -403,10 +413,10 @@ update msg model =
                 Ready imageState ->
                     let
                         x =
-                            mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX * imageState.canvasScale
+                            mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX - 8
 
                         y =
-                            mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY * imageState.canvasScale
+                            mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY - 8 * imageState.canvasScale
 
                         -- _ =
                         --     Debug.log "mouseClickData" mouseClickData
@@ -423,10 +433,10 @@ update msg model =
                             round (x / 16)
 
                         maybeRowAndColIndex =
-                            Vector31.intToIndex rowIndexClick
+                            Vector30.intToIndex rowIndexClick
                                 |> Maybe.andThen
                                     (\rowIndexValue ->
-                                        Vector29.intToIndex colIndexClick
+                                        Vector31.intToIndex colIndexClick
                                             |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
                                     )
                     in
@@ -573,12 +583,13 @@ type KeyPressOrRelease
     | OtherKeyReleased
 
 
-jsonEncoder : Float -> Float -> Float -> Encode.Value
-jsonEncoder imageOffsetX imageOffsetY canvasScale =
+jsonEncoder : Float -> Float -> Float -> Encode.Value -> Encode.Value
+jsonEncoder imageOffsetX imageOffsetY canvasScale tilesEncoded =
     Encode.object
         [ ( "imageOffsetX", Encode.float imageOffsetX )
         , ( "imageOffsetY", Encode.float imageOffsetY )
         , ( "canvasScale", Encode.float canvasScale )
+        , ( "tiles", tilesEncoded )
         ]
 
 
@@ -617,6 +628,38 @@ getCanvasBoundingRectElseDefault boundingRectValue =
             , width = 0
             , height = 0
             }
+
+
+encodeWorld : World -> Encode.Value
+encodeWorld world =
+    Encode.list (Encode.list Encode.string) (worldToList world)
+
+
+tileTypeToString : TileType -> String
+tileTypeToString tileType =
+    case tileType of
+        Walkable ->
+            "Walkable"
+
+        NotWalkable ->
+            "NotWalkable"
+
+
+rowTilesToRowStrings : Vector31.Vector31 TileType -> Vector31.Vector31 String
+rowTilesToRowStrings rowTiles =
+    Vector31.map tileTypeToString rowTiles
+
+
+rowStringsToListStrings : Vector31.Vector31 String -> List String
+rowStringsToListStrings rowStrings =
+    Vector31.toList rowStrings
+
+
+worldToList : Vector30.Vector30 (Vector31.Vector31 TileType) -> List (List String)
+worldToList world =
+    Vector30.map rowTilesToRowStrings world
+        |> Vector30.map rowStringsToListStrings
+        |> Vector30.toList
 
 
 port loadImageURL : String -> Cmd msg
@@ -691,7 +734,7 @@ view model =
                             ]
                         , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
                             [ h5 [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ] [ text "Properties" ]
-                            , Html.form [ class "text-white" ]
+                            , div [ class "text-white" ]
                                 [ div [ class "space-y-4" ]
                                     [ div []
                                         [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset X:" ]
@@ -738,7 +781,7 @@ view model =
                                             [ rows 4, class "block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" ]
                                             [ text jsonString ]
                                         ]
-                                    , button [ onClick (SaveLevel { jsonString = jsonString, imageBytes = imageBytes, imageOffsetX = imageOffsetX, imageOffsetY = imageOffsetY, canvasScale = canvasScale }) ] [ text "Save" ]
+                                    , button [ onClick (SaveLevel { jsonString = jsonString, imageBytes = imageBytes, imageOffsetX = imageOffsetX, imageOffsetY = imageOffsetY, canvasScale = canvasScale, tiles = tiles }) ] [ text "Save" ]
                                     ]
                                 ]
                             ]
@@ -780,19 +823,19 @@ drawWorld world imageOffsetX imageOffsetY =
             [ Canvas.Settings.Advanced.translate imageOffsetX imageOffsetY
             ]
         ]
-        (Vector31.indexedMap
+        (Vector30.indexedMap
             (\rowIndex row ->
-                Vector29.indexedMap
+                Vector31.indexedMap
                     (\colIndex cell ->
                         drawCell (Row rowIndex) (Col colIndex) cell
                     )
                     row
-                    |> Vector29.toList
+                    |> Vector31.toList
                     |> List.concatMap
                         (\cell -> cell)
             )
             world
-            |> Vector31.toList
+            |> Vector30.toList
             |> List.concatMap
                 (\cell -> cell)
         )
@@ -803,10 +846,10 @@ drawCell : Row -> Col -> TileType -> List Canvas.Renderable
 drawCell (Row row) (Col col) tileType =
     let
         rowInt =
-            Vector31.indexToInt row
+            Vector30.indexToInt row
 
         colInt =
-            Vector29.indexToInt col
+            Vector31.indexToInt col
     in
     [ shapes
         [ if tileType == Walkable then
