@@ -192,33 +192,17 @@ update msg model =
 
         GotZip (Just zip) ->
             let
-                isFile =
-                    \entry -> not (Zip.Entry.isDirectory entry)
-
-                isMapJPG =
-                    \entry -> Zip.Entry.basename entry == "map.jpg"
-
                 isMapPNG =
                     \entry -> Zip.Entry.basename entry == "map.png"
 
                 isMapJSON =
                     \entry -> Zip.Entry.basename entry == "map.json"
 
-                -- allDemEntries =
-                --     Zip.entries zip
-                --         |> List.filter isFile
-                --         |> List.map (\entry -> Zip.Entry.basename entry)
-                -- _ =
-                --     Debug.log "allDemEntries" allDemEntries
                 mapJSONMaybe =
                     Zip.entries zip
                         |> List.filter isMapJSON
                         |> List.head
 
-                -- mapJPGMaybe =
-                --     Zip.entries zip
-                --         |> List.filter isMapJPG
-                --         |> List.head
                 mapPNGMaybe =
                     Zip.entries zip
                         |> List.filter isMapPNG
@@ -303,6 +287,7 @@ update msg model =
                                             { imageOffsetX = 0.0
                                             , imageOffsetY = 0.0
                                             , canvasScale = 1.0
+                                            , tiles = [ [] ]
                                             }
 
                                         Result.Ok parsedJSONDoc ->
@@ -321,7 +306,7 @@ update msg model =
                                         , sprite = sprite
                                         , imageOffsetX = jsonDoc.imageOffsetX
                                         , imageOffsetY = jsonDoc.imageOffsetY
-                                        , tiles = defaultWorld
+                                        , tiles = listToWorld jsonDoc.tiles
                                         , canvasScale = jsonDoc.canvasScale
                                         }
                               }
@@ -595,16 +580,18 @@ jsonEncoder imageOffsetX imageOffsetY canvasScale tilesEncoded =
 
 jsonDecoder : Decode.Decoder JSONDecodedDocument
 jsonDecoder =
-    Decode.map3 JSONDecodedDocument
+    Decode.map4 JSONDecodedDocument
         (Decode.field "imageOffsetX" Decode.float)
         (Decode.field "imageOffsetY" Decode.float)
         (Decode.field "canvasScale" Decode.float)
+        (Decode.field "tiles" (Decode.list (Decode.list Decode.string)))
 
 
 type alias JSONDecodedDocument =
     { imageOffsetX : Float
     , imageOffsetY : Float
     , canvasScale : Float
+    , tiles : List (List String)
     }
 
 
@@ -660,6 +647,42 @@ worldToList world =
     Vector30.map rowTilesToRowStrings world
         |> Vector30.map rowStringsToListStrings
         |> Vector30.toList
+
+
+listToWorld : List (List String) -> Vector30.Vector30 (Vector31.Vector31 TileType)
+listToWorld list =
+    case Vector30.fromList list of
+        Nothing ->
+            defaultWorld
+
+        Just ( leftOvers, vector30 ) ->
+            if List.length leftOvers > 0 then
+                defaultWorld
+
+            else
+                Vector30.map
+                    (\row ->
+                        case Vector31.fromList row of
+                            Nothing ->
+                                Vector31.repeat NotWalkable
+
+                            Just ( leftOverCols, vector31 ) ->
+                                if List.length leftOverCols > 0 then
+                                    Vector31.repeat NotWalkable
+
+                                else
+                                    Vector31.map
+                                        (\tileTypeString ->
+                                            case tileTypeString of
+                                                "Walkable" ->
+                                                    Walkable
+
+                                                _ ->
+                                                    NotWalkable
+                                        )
+                                        vector31
+                    )
+                    vector30
 
 
 port loadImageURL : String -> Cmd msg
