@@ -398,42 +398,26 @@ update msg model =
                 Ready imageState ->
                     let
                         x =
-                            mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX - 8
+                            (mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX) / imageState.canvasScale
+                            |> round
 
                         y =
-                            mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY - 8 * imageState.canvasScale
+                            (mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY) / imageState.canvasScale
+                            |> round
 
-                        -- _ =
-                        --     Debug.log "mouseClickData" mouseClickData
-                        -- _ =
-                        --     Debug.log "model.canvasBoundingRect" model.canvasBoundingRect
-                        -- _ =
-                        --     Debug.log "image offset" ( imageState.imageOffsetX, imageState.imageOffsetY )
-                        -- _ =
-                        --     Debug.log "x and y" ( x, y )
-                        rowIndexClick =
-                            round (y / 16)
+                        row = x // 16
+                        col = y // 16
 
-                        colIndexClick =
-                            round (x / 16)
-
+                        _ = Debug.log "x y" (x, y)
+                        _ = Debug.log "row col" (row, col)
                         maybeRowAndColIndex =
-                            Vector29.intToIndex rowIndexClick
+                            Vector29.intToIndex col
                                 |> Maybe.andThen
                                     (\rowIndexValue ->
-                                        Vector31.intToIndex colIndexClick
+                                        Vector31.intToIndex row
                                             |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
                                     )
                     in
-                    -- case cellMaybe of
-                    --     Nothing ->
-                    --         ( model, Cmd.none )
-                    --     Just tileWalkableState ->
-                    --         let
-                    --             updatedTiles =
-                    --                 Array.set colIndex (getOppositeTileType tileWalkableState) row)
-                    --         in
-                    --         ( { model | documentState = {} }, Cmd.none )
                     case maybeRowAndColIndex of
                         Just ( rowIndex, colIndex ) ->
                             let
