@@ -68,7 +68,7 @@ type DocumentState
 type PaintMode
     = Toggle
     | Brush Bool
-    | Erase
+    | Erase Bool
     | FillWalkable
     | FillUnwalkable
 
@@ -534,6 +534,14 @@ update msg model =
                             , Cmd.none
                             )
 
+                        Erase False ->
+                            ( { model
+                                | documentState =
+                                    Ready { imageState | paintMode = Erase True }
+                              }
+                            , Cmd.none
+                            )
+
                         _ ->
                             ( model, Cmd.none )
 
@@ -552,6 +560,14 @@ update msg model =
                             , Cmd.none
                             )
 
+                        Erase True ->
+                            ( { model
+                                | documentState =
+                                    Ready { imageState | paintMode = Erase False }
+                              }
+                            , Cmd.none
+                            )
+
                         _ ->
                             ( model, Cmd.none )
 
@@ -561,48 +577,52 @@ update msg model =
         MouseMoved x y ->
             case model.documentState of
                 Ready imageState ->
-                    case imageState.paintMode of
-                        Brush True ->
-                            let
-                                mouseMoveX =
-                                    x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
+                    if imageState.paintMode == Brush True || imageState.paintMode == Erase True then
+                        let
+                            mouseMoveX =
+                                x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
 
-                                mouseMoveY =
-                                    y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
+                            mouseMoveY =
+                                y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
 
-                                tileSize =
-                                    16 * imageState.canvasScale
+                            tileSize =
+                                16 * imageState.canvasScale
 
-                                row =
-                                    mouseMoveX / tileSize |> floor
+                            row =
+                                mouseMoveX / tileSize |> floor
 
-                                col =
-                                    mouseMoveY / tileSize |> floor
+                            col =
+                                mouseMoveY / tileSize |> floor
 
-                                maybeRowAndColIndex =
-                                    Vector29.intToIndex col
-                                        |> Maybe.andThen
-                                            (\rowIndexValue ->
-                                                Vector31.intToIndex row
-                                                    |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
-                                            )
-                            in
-                            case maybeRowAndColIndex of
-                                Just ( rowIndex, colIndex ) ->
+                            maybeRowAndColIndex =
+                                Vector29.intToIndex col
+                                    |> Maybe.andThen
+                                        (\rowIndexValue ->
+                                            Vector31.intToIndex row
+                                                |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
+                                        )
+                        in
+                        case maybeRowAndColIndex of
+                            Just ( rowIndex, colIndex ) ->
+                                if imageState.paintMode == Brush True then
                                     let
-                                        tileType =
-                                            getCell (Row rowIndex) (Col colIndex) imageState.tiles
-
                                         updatedWorld =
                                             setCell (Row rowIndex) (Col colIndex) Walkable imageState.tiles
                                     in
                                     ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
 
-                                Nothing ->
-                                    ( model, Cmd.none )
+                                else
+                                    let
+                                        updatedWorld =
+                                            setCell (Row rowIndex) (Col colIndex) NotWalkable imageState.tiles
+                                    in
+                                    ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
 
-                        _ ->
-                            ( model, Cmd.none )
+                            Nothing ->
+                                ( model, Cmd.none )
+
+                    else
+                        ( model, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -1116,9 +1136,9 @@ paintButtons model =
             ]
         , button
             [ Attr.type_ "button"
-            , Attr.class (getPaintButtonSelected model.documentState Erase)
+            , Attr.class (getPaintButtonSelected model.documentState (Erase False))
             , Attr.disabled (getPaintButtonDisabled model.documentState)
-            , onClick (ChangePaintMode Erase)
+            , onClick (ChangePaintMode (Erase False))
             ]
             [ Svg.svg
                 [ SvgAttr.width paintIconWidth
@@ -1400,8 +1420,8 @@ paintModesEqualExceptBrush modeA modeB =
         Brush _ ->
             modeB == Brush True || modeB == Brush False
 
-        Erase ->
-            modeB == Erase
+        Erase _ ->
+            modeB == Erase True || modeB == Erase False
 
         FillWalkable ->
             modeB == FillWalkable
@@ -1498,7 +1518,27 @@ subscriptions model =
                         , onCanvasBoundingRect CanvasBoundingRectLoaded
                         ]
 
+                Erase False ->
+                    Sub.batch
+                        [ onImageFromJavaScript ImageLoadedFromJavaScript
+                        , onKeyDown keyDecoderPressed
+                        , onKeyUp keyDecoderReleased
+                        , Time.every (10 * 1000) Tick
+                        , onCanvasBoundingRect CanvasBoundingRectLoaded
+                        ]
+
                 Brush True ->
+                    Sub.batch
+                        [ onImageFromJavaScript ImageLoadedFromJavaScript
+                        , onKeyDown keyDecoderPressed
+                        , onKeyUp keyDecoderReleased
+                        , Time.every (10 * 1000) Tick
+                        , onCanvasBoundingRect CanvasBoundingRectLoaded
+                        , BrowserEvents.onMouseMove (Decode.map2 MouseMoved (Decode.field "pageX" Decode.float) (Decode.field "pageY" Decode.float))
+                        , BrowserEvents.onMouseUp (Decode.succeed StopMouseMove)
+                        ]
+
+                Erase True ->
                     Sub.batch
                         [ onImageFromJavaScript ImageLoadedFromJavaScript
                         , onKeyDown keyDecoderPressed
