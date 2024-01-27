@@ -5,7 +5,7 @@ import Animator exposing (color)
 import Array exposing (Array)
 import Base64.Encode as Base64Encode
 import Browser
-import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
+import Browser.Events as BrowserEvents exposing (Visibility(..), onAnimationFrameDelta, onKeyDown, onKeyUp, onVisibilityChange)
 import Bytes exposing (Bytes)
 import Bytes.Encode as BytesEncode
 import Canvas exposing (Point, rect, shapes)
@@ -19,7 +19,7 @@ import File.Download as Download
 import File.Select as Select
 import Html exposing (..)
 import Html.Attributes as Attr exposing (..)
-import Html.Events exposing (on, onClick, onInput)
+import Html.Events exposing (on, onClick, onInput, onMouseDown, onMouseUp)
 import Image
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -67,7 +67,7 @@ type DocumentState
 
 type PaintMode
     = Toggle
-    | Brush
+    | Brush Bool
     | Erase
     | FillWalkable
     | FillUnwalkable
@@ -182,6 +182,10 @@ type Msg
         , tiles : World
         }
     | MouseClick MouseClickData
+    | OnMouseDown
+    | OnMouseUp
+    | MouseMoved Float Float
+    | StopMouseMove
     | CanvasBoundingRectLoaded Decode.Value
     | ChangePaintMode PaintMode
 
@@ -466,48 +470,160 @@ update msg model =
         MouseClick mouseClickData ->
             case model.documentState of
                 Ready imageState ->
-                    let
-                        x =
-                            mouseClickData.x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
-
-                        y =
-                            mouseClickData.y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
-
-                        tileSize =
-                            16 * imageState.canvasScale
-
-                        row =
-                            x / tileSize |> floor
-
-                        col =
-                            y / tileSize |> floor
-
-                        -- _ = Debug.log "x / tileSize" (x / tileSize)
-                        -- _ = Debug.log "x y" (x, y)
-                        -- _ = Debug.log "row col" (row, col)
-                        maybeRowAndColIndex =
-                            Vector29.intToIndex col
-                                |> Maybe.andThen
-                                    (\rowIndexValue ->
-                                        Vector31.intToIndex row
-                                            |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
-                                    )
-                    in
-                    case maybeRowAndColIndex of
-                        Just ( rowIndex, colIndex ) ->
+                    case imageState.paintMode of
+                        Toggle ->
                             let
-                                tileType =
-                                    getCell (Row rowIndex) (Col colIndex) imageState.tiles
+                                x =
+                                    mouseClickData.x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
 
-                                updatedTileType =
-                                    getOppositeTileType tileType
+                                y =
+                                    mouseClickData.y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
 
-                                updatedWorld =
-                                    setCell (Row rowIndex) (Col colIndex) updatedTileType imageState.tiles
+                                tileSize =
+                                    16 * imageState.canvasScale
+
+                                row =
+                                    x / tileSize |> floor
+
+                                col =
+                                    y / tileSize |> floor
+
+                                -- _ = Debug.log "x / tileSize" (x / tileSize)
+                                -- _ = Debug.log "x y" (x, y)
+                                -- _ = Debug.log "row col" (row, col)
+                                maybeRowAndColIndex =
+                                    Vector29.intToIndex col
+                                        |> Maybe.andThen
+                                            (\rowIndexValue ->
+                                                Vector31.intToIndex row
+                                                    |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
+                                            )
                             in
-                            ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
+                            case maybeRowAndColIndex of
+                                Just ( rowIndex, colIndex ) ->
+                                    let
+                                        tileType =
+                                            getCell (Row rowIndex) (Col colIndex) imageState.tiles
 
-                        Nothing ->
+                                        updatedTileType =
+                                            getOppositeTileType tileType
+
+                                        updatedWorld =
+                                            setCell (Row rowIndex) (Col colIndex) updatedTileType imageState.tiles
+                                    in
+                                    ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
+
+                                Nothing ->
+                                    ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        OnMouseDown ->
+            case model.documentState of
+                Ready imageState ->
+                    case imageState.paintMode of
+                        Brush False ->
+                            ( { model
+                                | documentState =
+                                    Ready { imageState | paintMode = Brush True }
+                              }
+                            , Cmd.none
+                            )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        OnMouseUp ->
+            case model.documentState of
+                Ready imageState ->
+                    case imageState.paintMode of
+                        Brush True ->
+                            ( { model
+                                | documentState =
+                                    Ready { imageState | paintMode = Brush False }
+                              }
+                            , Cmd.none
+                            )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        MouseMoved x y ->
+            case model.documentState of
+                Ready imageState ->
+                    case imageState.paintMode of
+                        Brush True ->
+                            let
+                                mouseMoveX =
+                                    x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
+
+                                mouseMoveY =
+                                    y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
+
+                                tileSize =
+                                    16 * imageState.canvasScale
+
+                                row =
+                                    mouseMoveX / tileSize |> floor
+
+                                col =
+                                    mouseMoveY / tileSize |> floor
+
+                                maybeRowAndColIndex =
+                                    Vector29.intToIndex col
+                                        |> Maybe.andThen
+                                            (\rowIndexValue ->
+                                                Vector31.intToIndex row
+                                                    |> Maybe.map (\colIndexValue -> ( rowIndexValue, colIndexValue ))
+                                            )
+                            in
+                            case maybeRowAndColIndex of
+                                Just ( rowIndex, colIndex ) ->
+                                    let
+                                        tileType =
+                                            getCell (Row rowIndex) (Col colIndex) imageState.tiles
+
+                                        updatedWorld =
+                                            setCell (Row rowIndex) (Col colIndex) Walkable imageState.tiles
+                                    in
+                                    ( { model | documentState = Ready { imageState | tiles = updatedWorld } }, Cmd.none )
+
+                                Nothing ->
+                                    ( model, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        StopMouseMove ->
+            case model.documentState of
+                Ready imageState ->
+                    case imageState.paintMode of
+                        Brush pressed ->
+                            let
+                                _ =
+                                    Debug.log "stop mouse move, pressed" pressed
+                            in
+                            ( { model
+                                | documentState =
+                                    Ready { imageState | paintMode = Brush False }
+                              }
+                            , Cmd.none
+                            )
+
+                        _ ->
                             ( model, Cmd.none )
 
                 _ ->
@@ -812,7 +928,11 @@ view model =
                                 , height = round widthAndHeight.height
                                 , textures = []
                                 }
-                                [ Attr.class "block pixel-art", on "click" (Decode.map MouseClick mouseClickDecoder) ]
+                                [ Attr.class "block pixel-art"
+                                , on "click" (Decode.map MouseClick mouseClickDecoder)
+                                , onMouseDown OnMouseDown
+                                , onMouseUp OnMouseUp
+                                ]
                                 [ shapes
                                     [ CanvasSettings.fill (Color.rgb 0.85 0.92 1) ]
                                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
@@ -955,9 +1075,9 @@ paintButtons model =
             ]
         , button
             [ Attr.type_ "button"
-            , Attr.class (getPaintButtonSelected model.documentState Brush)
+            , Attr.class (getPaintButtonSelected model.documentState (Brush False))
             , Attr.disabled (getPaintButtonDisabled model.documentState)
-            , onClick (ChangePaintMode Brush)
+            , onClick (ChangePaintMode (Brush False))
             ]
             [ Svg.svg
                 [ SvgAttr.width paintIconWidth
@@ -984,7 +1104,7 @@ paintButtons model =
                     ]
                     []
                 , Svg.path
-                    [ SvgAttr.fill "#A0041E"
+                    [ SvgAttr.fill "#04A019"
                     , SvgAttr.d "M11.229 32.26c-1.191.769-1.826.128-1.609-.609c.221-.751-.12-1.648-1.237-1.414c-1.117.233-1.856-.354-1.503-1.767c.348-1.393-1.085-1.863-1.754-.435c-.582 1.16-1.017 2.359-1.222 3.115c-.677 2.503-3.476 3.595-3.476 3.595s5.988 1.184 10.801-2.485z"
                     ]
                     []
@@ -992,7 +1112,7 @@ paintButtons model =
             , span
                 [ Attr.class "sr-only"
                 ]
-                [ text "Paint Multiple Tiles" ]
+                [ text "Paint Walkable Tiles" ]
             ]
         , button
             [ Attr.type_ "button"
@@ -1347,13 +1467,46 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Sub.batch
-        [ onImageFromJavaScript ImageLoadedFromJavaScript
-        , onKeyDown keyDecoderPressed
-        , onKeyUp keyDecoderReleased
-        , Time.every (10 * 1000) Tick
-        , onCanvasBoundingRect CanvasBoundingRectLoaded
-        ]
+    case model.documentState of
+        Ready imageState ->
+            case imageState.paintMode of
+                Brush False ->
+                    Sub.batch
+                        [ onImageFromJavaScript ImageLoadedFromJavaScript
+                        , onKeyDown keyDecoderPressed
+                        , onKeyUp keyDecoderReleased
+                        , Time.every (10 * 1000) Tick
+                        , onCanvasBoundingRect CanvasBoundingRectLoaded
+                        ]
+
+                Brush True ->
+                    Sub.batch
+                        [ onImageFromJavaScript ImageLoadedFromJavaScript
+                        , onKeyDown keyDecoderPressed
+                        , onKeyUp keyDecoderReleased
+                        , Time.every (10 * 1000) Tick
+                        , onCanvasBoundingRect CanvasBoundingRectLoaded
+                        , BrowserEvents.onMouseMove (Decode.map2 MouseMoved (Decode.field "pageX" Decode.float) (Decode.field "pageY" Decode.float))
+                        , BrowserEvents.onMouseUp (Decode.succeed StopMouseMove)
+                        ]
+
+                _ ->
+                    Sub.batch
+                        [ onImageFromJavaScript ImageLoadedFromJavaScript
+                        , onKeyDown keyDecoderPressed
+                        , onKeyUp keyDecoderReleased
+                        , Time.every (10 * 1000) Tick
+                        , onCanvasBoundingRect CanvasBoundingRectLoaded
+                        ]
+
+        _ ->
+            Sub.batch
+                [ onImageFromJavaScript ImageLoadedFromJavaScript
+                , onKeyDown keyDecoderPressed
+                , onKeyUp keyDecoderReleased
+                , Time.every (10 * 1000) Tick
+                , onCanvasBoundingRect CanvasBoundingRectLoaded
+                ]
 
 
 main : Program () Model Msg
