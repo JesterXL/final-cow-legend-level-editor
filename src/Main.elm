@@ -398,18 +398,21 @@ update msg model =
                 Ready imageState ->
                     let
                         x =
-                            (mouseClickData.x - model.canvasBoundingRect.x - imageState.imageOffsetX) / imageState.canvasScale
-                            |> round
+                            (mouseClickData.x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale))
 
                         y =
-                            (mouseClickData.y - model.canvasBoundingRect.y - imageState.imageOffsetY) / imageState.canvasScale
-                            |> round
+                            (mouseClickData.y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale))
 
-                        row = x // 16
-                        col = y // 16
+                        tileSize = 16 * imageState.canvasScale
 
-                        _ = Debug.log "x y" (x, y)
-                        _ = Debug.log "row col" (row, col)
+                        
+
+                        row = x / tileSize |> floor
+                        col = y / tileSize |> floor
+
+                        -- _ = Debug.log "x / tileSize" (x / tileSize)
+                        -- _ = Debug.log "x y" (x, y)
+                        -- _ = Debug.log "row col" (row, col)
                         maybeRowAndColIndex =
                             Vector29.intToIndex col
                                 |> Maybe.andThen
