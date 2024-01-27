@@ -52,9 +52,12 @@ type DocumentState
         , base64Image : ImageAsString
         , sprite : Texture
         , imageOffsetX : Float
+        , imageOffsetXUser : String
         , imageOffsetY : Float
+        , imageOffsetYUser : String
         , tiles : World
         , canvasScale : Float
+        , canvasScaleUser : String
         }
     | Failed String
 
@@ -305,9 +308,12 @@ update msg model =
                                         , base64Image = imageAsString
                                         , sprite = sprite
                                         , imageOffsetX = jsonDoc.imageOffsetX
+                                        , imageOffsetXUser = jsonDoc.imageOffsetX |> String.fromFloat
                                         , imageOffsetY = jsonDoc.imageOffsetY
+                                        , imageOffsetYUser = jsonDoc.imageOffsetY |> String.fromFloat
                                         , tiles = listToWorld jsonDoc.tiles
                                         , canvasScale = jsonDoc.canvasScale
+                                        , canvasScaleUser = jsonDoc.canvasScale |> String.fromFloat
                                         }
                               }
                             , getCanvasBoundingRect ()
@@ -324,10 +330,27 @@ update msg model =
                 Ready imageState ->
                     case String.toFloat imageOffsetXString of
                         Nothing ->
-                            ( model, Cmd.none )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | imageOffsetXUser = imageOffsetXString
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         Just imageOffsetX ->
-                            ( { model | documentState = Ready { imageState | imageOffsetX = imageOffsetX } }, getCanvasBoundingRect () )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | imageOffsetX = imageOffsetX
+                                            , imageOffsetXUser = imageOffsetXString
+                                        }
+                              }
+                            , getCanvasBoundingRect ()
+                            )
 
                 _ ->
                     ( model, Cmd.none )
@@ -337,10 +360,27 @@ update msg model =
                 Ready imageState ->
                     case String.toFloat imageOffsetYString of
                         Nothing ->
-                            ( model, Cmd.none )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | imageOffsetYUser = imageOffsetYString
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         Just imageOffsetY ->
-                            ( { model | documentState = Ready { imageState | imageOffsetY = imageOffsetY } }, getCanvasBoundingRect () )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | imageOffsetY = imageOffsetY
+                                            , imageOffsetYUser = imageOffsetYString
+                                        }
+                              }
+                            , getCanvasBoundingRect ()
+                            )
 
                 _ ->
                     ( model, Cmd.none )
@@ -350,10 +390,27 @@ update msg model =
                 Ready imageState ->
                     case String.toFloat scaleString of
                         Nothing ->
-                            ( model, Cmd.none )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | canvasScaleUser = scaleString
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         Just canvasScale ->
-                            ( { model | documentState = Ready { imageState | canvasScale = canvasScale } }, getCanvasBoundingRect () )
+                            ( { model
+                                | documentState =
+                                    Ready
+                                        { imageState
+                                            | canvasScale = canvasScale
+                                            , canvasScaleUser = scaleString
+                                        }
+                              }
+                            , getCanvasBoundingRect ()
+                            )
 
                 _ ->
                     ( model, Cmd.none )
@@ -398,17 +455,19 @@ update msg model =
                 Ready imageState ->
                     let
                         x =
-                            (mouseClickData.x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale))
+                            mouseClickData.x - model.canvasBoundingRect.x - (imageState.imageOffsetX * imageState.canvasScale)
 
                         y =
-                            (mouseClickData.y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale))
+                            mouseClickData.y - model.canvasBoundingRect.y - (imageState.imageOffsetY * imageState.canvasScale)
 
-                        tileSize = 16 * imageState.canvasScale
+                        tileSize =
+                            16 * imageState.canvasScale
 
-                        
+                        row =
+                            x / tileSize |> floor
 
-                        row = x / tileSize |> floor
-                        col = y / tileSize |> floor
+                        col =
+                            y / tileSize |> floor
 
                         -- _ = Debug.log "x / tileSize" (x / tileSize)
                         -- _ = Debug.log "x y" (x, y)
@@ -714,7 +773,7 @@ view model =
                     ]
                 ]
             , case model.documentState of
-                Ready { jsonString, imageBytes, base64Image, sprite, imageOffsetX, imageOffsetY, tiles, canvasScale } ->
+                Ready { jsonString, imageBytes, base64Image, sprite, imageOffsetX, imageOffsetXUser, imageOffsetY, imageOffsetYUser, tiles, canvasScale, canvasScaleUser } ->
                     let
                         widthAndHeight =
                             Canvas.Texture.dimensions sprite
@@ -743,24 +802,30 @@ view model =
                                 ]
                             ]
                         , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
-                            [ h5 [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ] [ text "Properties" ]
+                            [ h5
+                                [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ]
+                                [ text "Properties" ]
                             , div [ class "text-white" ]
                                 [ div [ class "space-y-4" ]
                                     [ div []
-                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset X:" ]
+                                        [ label
+                                            [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
+                                            [ text "Offset X:" ]
                                         , input
                                             [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetXChange
-                                            , value (String.fromFloat imageOffsetX)
+                                            , value imageOffsetXUser
                                             ]
                                             []
                                         ]
                                     , div []
-                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Offset Y:" ]
+                                        [ label
+                                            [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
+                                            [ text "Offset Y:" ]
                                         , input
                                             [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetYChange
-                                            , value (String.fromFloat imageOffsetY)
+                                            , value imageOffsetYUser
                                             ]
                                             []
                                         ]
@@ -769,7 +834,7 @@ view model =
                                         , input
                                             [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput CanvasScaleChange
-                                            , value (String.fromFloat canvasScale)
+                                            , value canvasScaleUser
                                             ]
                                             []
                                         , input
