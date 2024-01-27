@@ -9,7 +9,7 @@ import Browser.Events exposing (Visibility(..), onAnimationFrameDelta, onKeyDown
 import Bytes exposing (Bytes)
 import Bytes.Encode as BytesEncode
 import Canvas exposing (Point, rect, shapes)
-import Canvas.Settings exposing (fill, stroke)
+import Canvas.Settings as CanvasSettings
 import Canvas.Settings.Advanced
 import Canvas.Settings.Text exposing (TextAlign(..), align, font)
 import Canvas.Texture exposing (Texture, sprite)
@@ -18,7 +18,7 @@ import File exposing (File)
 import File.Download as Download
 import File.Select as Select
 import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes as Attr exposing (..)
 import Html.Events exposing (on, onClick, onInput)
 import Image
 import Json.Decode as Decode
@@ -26,6 +26,8 @@ import Json.Encode as Encode
 import Random
 import Set
 import String exposing (toFloat)
+import Svg
+import Svg.Attributes as SvgAttr exposing (..)
 import Task
 import Time
 import Vector29
@@ -753,22 +755,64 @@ type alias CanvasBoundingRect =
 
 view : Model -> Html Msg
 view model =
-    div [ class "w-full" ]
-        [ header [ class "antialiased" ]
-            [ nav [ class "bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800" ]
-                [ div [ class "flex flex-wrap justify-between items-center" ]
-                    [ div [ class "flex justify-start items-center" ]
-                        [ a [ href "https://github.com/JesterXL/final-cow-legend-level-editor", class "flex mr-4" ]
-                            [ img [ src "logo.jpg", class "mr-3 h-8" ] []
-                            , div [ class "flex flex-row items-baseline" ]
-                                [ span [ class "text-2xl font-semibold whitespace-nowrap dark:text-white" ] [ text "Level Editor" ]
-                                , span [ class "text-2xl font-semibold text-xs whitespace-nowrap dark:text-white pl-2" ] [ text "v1.0" ]
+    div [ Attr.class "w-full" ]
+        [ header [ Attr.class "antialiased" ]
+            [ nav [ Attr.class "bg-white border-gray-200 px-4 lg:px-6 py-2.5 dark:bg-gray-800" ]
+                [ div [ Attr.class "flex flex-wrap justify-between items-center" ]
+                    [ div [ Attr.class "flex justify-start items-center" ]
+                        [ a [ href "https://github.com/JesterXL/final-cow-legend-level-editor", Attr.class "flex mr-4" ]
+                            [ img [ src "logo.jpg", Attr.class "mr-3 h-8" ] []
+                            , div [ Attr.class "flex flex-row items-baseline" ]
+                                [ span [ Attr.class "text-2xl font-semibold whitespace-nowrap dark:text-white" ] [ text "Level Editor" ]
+                                , span [ Attr.class "text-2xl font-semibold text-xs whitespace-nowrap dark:text-white pl-2" ] [ text "v1.0" ]
                                 ]
                             ]
                         ]
-                    , div [ class "flex items-center lg:order-2" ]
-                        [ button [ class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenImage ] [ text "Open Image" ]
-                        , button [ class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenFile ] [ text "Open File" ]
+                    , div
+                        []
+                        [ button
+                            [ Attr.type_ "button"
+                            , Attr.class "text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm p-2.5 text-center inline-flex items-center me-2 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
+                            ]
+                            [ Svg.svg
+                                [ SvgAttr.width "24px"
+                                , SvgAttr.height "24px"
+                                , SvgAttr.viewBox "0 0 36 36"
+                                , Attr.attribute "aria-hidden" "true"
+                                , Attr.attribute "role" "img"
+                                , SvgAttr.class "iconify iconify--twemoji"
+                                , SvgAttr.preserveAspectRatio "xMidYMid meet"
+                                ]
+                                [ Svg.path
+                                    [ SvgAttr.fill "#3B88C3"
+                                    , SvgAttr.d "M14.57 27.673c2.814-1.692 6.635-3.807 9.899-7.071c7.03-7.029 12.729-16.97 11.314-18.385C34.369.803 24.428 6.502 17.398 13.531c-3.265 3.265-5.379 7.085-7.071 9.899l4.243 4.243z"
+                                    ]
+                                    []
+                                , Svg.path
+                                    [ SvgAttr.fill "#C1694F"
+                                    , SvgAttr.d "M.428 34.744s7.071 1.414 12.021-3.536c2.121-2.121 2.121-4.949 2.121-4.949l-2.829-2.829s-3.535.708-4.95 2.122c-1.414 1.414-2.518 4.232-2.888 5.598c-.676 2.502-3.475 3.594-3.475 3.594z"
+                                    ]
+                                    []
+                                , Svg.path
+                                    [ SvgAttr.fill "#CCD6DD"
+                                    , SvgAttr.d "M17.882 25.328l-5.168-5.168c-.391-.391-.958-.326-1.27.145l-1.123 1.705c-.311.471-.271 1.142.087 1.501l4.122 4.123c.358.358 1.03.397 1.501.087l1.705-1.124c.472-.311.536-.878.146-1.269z"
+                                    ]
+                                    []
+                                , Svg.path
+                                    [ SvgAttr.fill "#A0041E"
+                                    , SvgAttr.d "M11.229 32.26c-1.191.769-1.826.128-1.609-.609c.221-.751-.12-1.648-1.237-1.414c-1.117.233-1.856-.354-1.503-1.767c.348-1.393-1.085-1.863-1.754-.435c-.582 1.16-1.017 2.359-1.222 3.115c-.677 2.503-3.476 3.595-3.476 3.595s5.988 1.184 10.801-2.485z"
+                                    ]
+                                    []
+                                ]
+                            , span
+                                [ Attr.class "sr-only"
+                                ]
+                                [ text "Icon description" ]
+                            ]
+                        ]
+                    , div [ Attr.class "flex items-center lg:order-2" ]
+                        [ button [ Attr.class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenImage ] [ text "Open Image" ]
+                        , button [ Attr.class "hidden sm:inline-flex items-center justify-center text-white bg-primary-700 hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 font-medium rounded-lg text-xs px-3 py-1.5 mr-2 dark:bg-primary-600 dark:hover:bg-primary-700 focus:outline-none dark:focus:ring-primary-800", onClick OpenFile ] [ text "Open File" ]
                         ]
                     ]
                 ]
@@ -779,16 +823,16 @@ view model =
                             Canvas.Texture.dimensions sprite
                     in
                     div
-                        [ class "flex flex-row flex-nowrap" ]
-                        [ div [ class "grow" ]
+                        [ Attr.class "flex flex-row flex-nowrap" ]
+                        [ div [ Attr.class "grow" ]
                             [ Canvas.toHtmlWith
                                 { width = round widthAndHeight.width
                                 , height = round widthAndHeight.height
                                 , textures = []
                                 }
-                                [ class "block pixel-art", on "click" (Decode.map MouseClick mouseClickDecoder) ]
+                                [ Attr.class "block pixel-art", on "click" (Decode.map MouseClick mouseClickDecoder) ]
                                 [ shapes
-                                    [ fill (Color.rgb 0.85 0.92 1) ]
+                                    [ CanvasSettings.fill (Color.rgb 0.85 0.92 1) ]
                                     [ rect ( 0, 0 ) widthAndHeight.width widthAndHeight.height ]
                                 , Canvas.group
                                     [ Canvas.Settings.Advanced.transform [ Canvas.Settings.Advanced.scale canvasScale canvasScale ] ]
@@ -801,18 +845,18 @@ view model =
                                     )
                                 ]
                             ]
-                        , div [ class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
+                        , div [ Attr.class "w-[360px] h-screen p-4 overflow-y-auto bg-white dark:bg-gray-800" ]
                             [ h5
-                                [ class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ]
+                                [ Attr.class "inline-flex items-center mb-6 text-sm font-semibold text-gray-500 uppercase dark:text-gray-400" ]
                                 [ text "Properties" ]
-                            , div [ class "text-white" ]
-                                [ div [ class "space-y-4" ]
+                            , div [ Attr.class "text-white" ]
+                                [ div [ Attr.class "space-y-4" ]
                                     [ div []
                                         [ label
-                                            [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
+                                            [ Attr.class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
                                             [ text "Offset X:" ]
                                         , input
-                                            [ class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            [ Attr.class "bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetXChange
                                             , value imageOffsetXUser
                                             ]
@@ -820,40 +864,40 @@ view model =
                                         ]
                                     , div []
                                         [ label
-                                            [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
+                                            [ Attr.class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ]
                                             [ text "Offset Y:" ]
                                         , input
-                                            [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            [ Attr.class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput ImageOffsetYChange
                                             , value imageOffsetYUser
                                             ]
                                             []
                                         ]
                                     , div []
-                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Scale:" ]
+                                        [ label [ Attr.class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Scale:" ]
                                         , input
-                                            [ class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                            [ Attr.class "bbg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                             , onInput CanvasScaleChange
                                             , value canvasScaleUser
                                             ]
                                             []
                                         , input
-                                            [ class "mt-4 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
-                                            , Html.Attributes.type_ "range"
+                                            [ Attr.class "mt-4 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                                            , Attr.type_ "range"
                                             , onInput CanvasScaleChange
-                                            , Html.Attributes.min "1"
-                                            , Html.Attributes.max "6"
-                                            , Html.Attributes.step "0.1"
+                                            , Attr.min "1"
+                                            , Attr.max "6"
+                                            , Attr.step "0.1"
                                             , value (String.fromFloat canvasScale)
                                             ]
                                             []
 
-                                        -- class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
+                                        -- Attr.class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700">
                                         ]
                                     , div []
-                                        [ label [ class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Map JSON:" ]
+                                        [ label [ Attr.class "block mb-2 text-sm font-medium text-gray-900 dark:text-white" ] [ text "Map JSON:" ]
                                         , textarea
-                                            [ rows 4, class "block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" ]
+                                            [ rows 4, Attr.class "block p-2.5 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" ]
                                             [ text jsonString ]
                                         ]
                                     , button [ onClick (SaveLevel { jsonString = jsonString, imageBytes = imageBytes, imageOffsetX = imageOffsetX, imageOffsetY = imageOffsetY, canvasScale = canvasScale, tiles = tiles }) ] [ text "Save" ]
@@ -864,14 +908,14 @@ view model =
 
                 _ ->
                     div
-                        [ class "flex flex-row flex-nowrap" ]
-                        [ div [ class "grow" ]
+                        [ Attr.class "flex flex-row flex-nowrap" ]
+                        [ div [ Attr.class "grow" ]
                             [ Canvas.toHtmlWith
                                 { width = round 600
                                 , height = round 600
                                 , textures = []
                                 }
-                                [ class "block pixel-art" ]
+                                [ Attr.class "block pixel-art" ]
                                 []
                             ]
                         ]
@@ -928,13 +972,13 @@ drawCell (Row row) (Col col) tileType =
     in
     [ shapes
         [ if tileType == Walkable then
-            fill Color.green
+            CanvasSettings.fill Color.green
 
           else
-            fill Color.red
+            CanvasSettings.fill Color.red
         ]
         [ rect ( Basics.toFloat colInt * 16, Basics.toFloat rowInt * 16 ) 16 16 ]
-    , shapes [ stroke Color.lightGreen ] [ rect ( Basics.toFloat colInt * 16, Basics.toFloat rowInt * 16 ) 16 16 ]
+    , shapes [ CanvasSettings.stroke Color.lightGreen ] [ rect ( Basics.toFloat colInt * 16, Basics.toFloat rowInt * 16 ) 16 16 ]
     ]
 
 
