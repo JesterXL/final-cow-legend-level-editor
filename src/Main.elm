@@ -1381,7 +1381,7 @@ getPaintButtonSelected : DocumentState -> PaintMode -> String
 getPaintButtonSelected documentState buttonMode =
     case documentState of
         Ready { paintMode } ->
-            if paintMode == buttonMode then
+            if paintModesEqualExceptBrush paintMode buttonMode then
                 paintButtonSelectedStyles
 
             else
@@ -1389,6 +1389,25 @@ getPaintButtonSelected documentState buttonMode =
 
         _ ->
             paintButtonOutlineStyles
+
+
+paintModesEqualExceptBrush : PaintMode -> PaintMode -> Bool
+paintModesEqualExceptBrush modeA modeB =
+    case modeA of
+        Toggle ->
+            modeB == Toggle
+
+        Brush _ ->
+            modeB == Brush True || modeB == Brush False
+
+        Erase ->
+            modeB == Erase
+
+        FillWalkable ->
+            modeB == FillWalkable
+
+        FillUnwalkable ->
+            modeB == FillUnwalkable
 
 
 getPaintButtonDisabled : DocumentState -> Bool
